@@ -1,0 +1,9 @@
+{
+  "name": "family-pt-coach",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Family physical therapy check-off app: 3-day rotation, weekly rep increases, demo videos.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}

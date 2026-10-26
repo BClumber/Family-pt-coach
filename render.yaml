@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: family-pt-coach
+    runtime: node
+    plan: free              # sleeps after ~15 min idle; first open after that takes ~30-50 s
+    region: virginia
+    buildCommand: "true"    # no dependencies to install
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: FAMILY_CODE    # the passcode the family types once per phone
+        sync: false
+      - key: COOKIE_SECRET
+        generateValue: true
