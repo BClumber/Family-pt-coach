@@ -203,7 +203,7 @@ const DEMOS={
  'clamshell':{name:'Clamshell',url:'/demos/clamshell.mp4',match:/clam/},
  'heel-slide':{name:'Heel slide',url:'/demos/heel-slide.mp4',match:/heel ?slide/},
  'calf-stretch':{name:'Calf stretch',url:'/demos/calf-stretch.mp4',match:/calf.*stretch|gastroc|soleus/},
- 'prone-press-up':{name:'Prone press-up',url:'/demos/prone-press-up.mp4',match:/press.?up|prone/},
+ 'prone-press-up':{name:'Prone press-up',url:'/demos/prone-press-up.mp4',match:/press.?up/},
  'pelvic-tilt':{name:'Pelvic tilt',url:'/demos/pelvic-tilt.mp4',match:/pelvic tilt/},
  'nerve-glide':{name:'Sciatic nerve glide',url:'/demos/nerve-glide.mp4',match:/nerve (glide|floss)|sciatic/},
  'dead-bug':{name:'Dead bug',url:'/demos/dead-bug.mp4',match:/dead ?bug/},
@@ -213,7 +213,10 @@ const DEMOS={
  'childs-pose':{name:"Child's pose",url:'/demos/childs-pose.mp4',match:/child/},
  'figure-four':{name:'Figure-4 stretch',url:'/demos/figure-four.mp4',match:/figure.?(4|four)|piriformis/},
  'hip-flexor-stretch':{name:'Hip flexor stretch',url:'/demos/hip-flexor-stretch.mp4',match:/hip flexor/},
- 'hamstring-strap':{name:'Hamstring stretch (strap)',url:'/demos/hamstring-strap.mp4',match:/hamstring/}
+ 'hamstring-strap':{name:'Hamstring stretch (strap)',url:'/demos/hamstring-strap.mp4',match:/hamstring/},
+ 'prone-y':{name:'Prone Y raise',url:'/demos/prone-y.mp4',match:/\by[ -]?(raise|lift)/},
+ 'prone-t':{name:'Prone T raise',url:'/demos/prone-t.mp4',match:/\bt[ -]?(raise|lift)/},
+ 'prone-i':{name:'Prone I raise',url:'/demos/prone-i.mp4',match:/\bi[ -]?(raise|lift)/}
 };
 const EXAMPLES=[
  {name:'Glute bridge',sets:2,reps:10,holdSec:3,restSec:30,side:'both',band:'',progress:true},
@@ -241,7 +244,15 @@ const PRESETS={lumbar:{name:'Lumbar pinched nerve (sciatica)',
    {name:'Dead bug',sets:2,reps:8,holdSec:0,restSec:30,side:'each',demo:'dead-bug',notes:'Low back stays pressed down. '+S2},
    {name:'Bird dog',sets:2,reps:8,holdSec:5,restSec:30,side:'each',demo:'bird-dog',notes:'Back flat like a table. '+S2},
    {name:'Side plank (from knees)',sets:3,reps:1,holdSec:20,restSec:20,side:'each',demo:'side-plank-knees',notes:'Elbow under shoulder, straight line head to knees. Work up from 15 to 20 s. '+S2}],
-  avoid:'Avoid for now: toe-touches, sit-ups and crunches, heavy lifting, twisting while lifting, and sitting slumped for more than 30 minutes.'}};
+  avoid:'Avoid for now: toe-touches, sit-ups and crunches, heavy lifting, twisting while lifting, and sitting slumped for more than 30 minutes.'},
+ yti:{name:'Rotator cuff Y-T-I raises',
+  about:'Strengthens the rotator cuff and the muscles that hold the shoulder blades back. Goes on Day 3 (arms), with reps going up each week like the rest of your program.',
+  rule:'A muscle burn between the shoulder blades is fine. Sharp or pinching pain in the front or top of the shoulder is not: stop that one and lower the height or skip it.',
+  day3:[
+   {name:'Prone Y raise',sets:2,reps:10,holdSec:2,restSec:30,demo:'prone-y',progress:true,notes:'Face down on a bed, bench or the floor (towel under your forehead). Arms in a Y, thumbs up toward the ceiling. Lead with the shoulder blades: squeeze them down and back, then lift a few inches.'},
+   {name:'Prone T raise',sets:2,reps:10,holdSec:2,restSec:30,demo:'prone-t',progress:true,notes:'Arms straight out to the sides, thumbs up. Pinch the shoulder blades together and lift a few inches. Don’t shrug toward your ears.'},
+   {name:'Prone I raise',sets:2,reps:10,holdSec:2,restSec:30,demo:'prone-i',progress:true,notes:'Arms overhead by your ears, thumbs up. Small lift, shoulders away from your ears. Usually the hardest of the three.'}],
+  avoid:'Start with no weight. Add 1–2 lb dumbbells (or soup cans) only when 15 clean reps feel easy, and drop back to fewer reps when you add weight. Lying face down is fine for the low back plan too.'}};
 const DAILY='daily';
 const rid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -469,16 +480,21 @@ function readExForm(){
   e.side=$('f-side').value;const b=document.querySelector('input[name="f-band"]:checked');e.band=b?b.value:'';e.notes=$('f-notes').value;if($('f-demo'))e.demo=$('f-demo').value;
   let l=$('f-link').value.trim();if(l&&!/^https?:\/\//i.test(l))l='https://'+l;e.videoLink=l;
 }
+function presetList(){
+  let h='<div class="row between"><h2 style="font-size:22px">Ready-made plans</h2><button class="btn sm ghost" data-a="mclose">Cancel</button></div>';
+  h+=Object.entries(PRESETS).map(([k,pr])=>{const n=(pr.daily||[]).length+(pr.day2||[]).length+(pr.day3||[]).length;return'<button class="btn" style="justify-content:flex-start;text-align:left;flex-direction:column;align-items:flex-start;gap:2px" data-a="presetpick" data-id="'+k+'">'+esc(pr.name)+'<span class="small muted" style="font-weight:400">'+n+' exercises · '+esc(pr.about)+'</span></button>'}).join('');
+  return h;
+}
 function presetForm(){
   const pr=PRESETS[MD.key],p=prof(),loaded=[p.daily,...p.dayTypes].some(l=>l.exercises.some(x=>x.preset===MD.key));
   const li=a=>'<ul style="margin:0;padding-left:20px">'+a.map(x=>'<li>'+esc(x.name)+' <span class="muted small">'+esc(doseText(newEx(x),x.reps))+'</span></li>').join('')+'</ul>';
   let h='<div class="row between"><h2 style="font-size:22px">'+esc(pr.name)+'</h2><button class="btn sm ghost" data-a="mclose">Cancel</button></div>';
   h+='<p style="margin:0">'+esc(pr.about)+'</p>';
-  h+='<div class="banner" style="background:var(--warn-soft)"><p><b>Red flags.</b> '+esc(pr.flags)+'</p></div>';
+  if(pr.flags)h+='<div class="banner" style="background:var(--warn-soft)"><p><b>Red flags.</b> '+esc(pr.flags)+'</p></div>';
   h+='<p class="small" style="margin:0"><b>The one rule:</b> '+esc(pr.rule)+'</p>';
-  h+='<span class="eyebrow">Every day ('+pr.daily.length+')</span>'+li(pr.daily);
-  h+='<span class="eyebrow">'+esc(p.dayTypes[1]?dayLabel(p,p.dayTypes[1])+' · '+p.dayTypes[1].name:'Day 2')+' ('+pr.day2.length+')</span>'+li(pr.day2);
-  h+='<p class="small muted" style="margin:0">'+esc(pr.avoid)+' Weekly rep increases start off on all of these; turn them on per exercise when the core work feels easy. Not a substitute for a physical therapist: if the leg pain isn’t clearly better in 4–6 weeks, get it checked.</p>';
+  if(pr.daily)h+='<span class="eyebrow">Every day ('+pr.daily.length+')</span>'+li(pr.daily);
+  [['day2',1],['day3',2]].forEach(([k,i])=>{if(pr[k])h+='<span class="eyebrow">'+esc(p.dayTypes[i]?dayLabel(p,p.dayTypes[i])+' · '+p.dayTypes[i].name:'Day '+(i+1))+' ('+pr[k].length+')</span>'+li(pr[k])});
+  h+='<p class="small muted" style="margin:0">'+esc(pr.avoid)+(MD.key==='lumbar'?' Weekly rep increases start off on all of these; turn them on per exercise when the core work feels easy. Not a substitute for a physical therapist: if the leg pain isn’t clearly better in 4–6 weeks, get it checked.':' Weekly rep increases are on for these.')+'</p>';
   h+='<p class="small muted" style="margin:0">'+(loaded?'This plan is already loaded. Loading again resets its exercises to the plan (your other exercises stay).':'The example exercises will be removed. Your own exercises stay.')+'</p>';
   h+='<button class="btn primary big" data-a="presetload">'+(loaded?'Reload plan for '+esc(p.name):'Load plan for '+esc(p.name))+'</button>';
   return h;
@@ -486,10 +502,12 @@ function presetForm(){
 function loadPreset(p,key){
   const pr=PRESETS[key],drop=x=>x.preset===key||/^Example —/.test(x.notes||'');
   for(const l of [p.daily,...p.dayTypes])l.exercises=l.exercises.filter(x=>{const d=drop(x);if(d&&x.videoId)assets&&assets.delete(x.videoId).catch(()=>{});return!d});
-  while(p.dayTypes.length<2)p.dayTypes.push({id:rid(),name:p.dayTypes.length?'Spine & abs':'Legs & hips',exercises:[]});
-  const mk=x=>newEx({side:'both',...x,progress:false,preset:key});
-  p.daily.exercises=[...pr.daily.map(mk),...p.daily.exercises];
-  p.dayTypes[1].exercises=[...pr.day2.map(mk),...p.dayTypes[1].exercises];
+  const names=['Legs & hips','Spine & abs','Arms'],need=pr.day3?3:pr.day2?2:1;
+  while(p.dayTypes.length<need)p.dayTypes.push({id:rid(),name:names[p.dayTypes.length]||'Day '+(p.dayTypes.length+1),exercises:[]});
+  const mk=x=>newEx({side:'both',...x,progress:x.progress===true,preset:key});
+  if(pr.daily)p.daily.exercises=[...pr.daily.map(mk),...p.daily.exercises];
+  if(pr.day2)p.dayTypes[1].exercises=[...pr.day2.map(mk),...p.dayTypes[1].exercises];
+  if(pr.day3)p.dayTypes[2].exercises=[...pr.day3.map(mk),...p.dayTypes[2].exercises];
 }
 function profForm(){
   const p=MD.p,wk=weekNo(p,dayKey());
@@ -520,8 +538,9 @@ document.addEventListener('click',e=>{
     case'timer':startTimer(id);break;
     case'pain':{const d=docOf(p,today);if(!d)break;d.pain=+id;d.note=($('t-note')||{}).value||d.note;saveDay(docKey(p,today));render();break}
     case'ptab':progTab=id;MD=null;render();break;
-    case'presets':MD={kind:'preset',key:'lumbar'};openModal(presetForm());break;
-    case'presetload':loadPreset(p,MD.key);ST.exampleBanner=false;progTab=DAILY;save();closeModal();view='today';render();window.scrollTo(0,0);setSync('Plan loaded');break;
+    case'presets':MD={kind:'preset'};openModal(presetList());break;
+    case'presetpick':MD={kind:'preset',key:id};openModal(presetForm());break;
+    case'presetload':{const k=MD.key;loadPreset(p,k);ST.exampleBanner=false;progTab=k==='yti'?p.dayTypes[2].id:DAILY;save();closeModal();view=k==='yti'?'program':'today';render();window.scrollTo(0,0);setSync('Plan loaded');break}
     case'addday':{const dt={id:rid(),name:'Day '+(p.dayTypes.length+1),exercises:[]};p.dayTypes.push(dt);progTab=dt.id;save();render();setTimeout(()=>{const i=$('dt-name');i&&i.select()},0);break}
     case'delday':{const dt=curDt();if(!MD||MD.delDay!==dt.id){MD={kind:'delday',delDay:dt.id};render();break}
       for(const ex of dt.exercises)if(ex.videoId)assets&&assets.delete(ex.videoId).catch(()=>{});p.dayTypes=p.dayTypes.filter(x=>x.id!==dt.id);MD=null;progTab=null;save();render();break}
