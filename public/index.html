@@ -159,6 +159,8 @@ video.vid{width:100%;max-width:100%;border-radius:12px;background:#000;max-heigh
 .wk .part{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
 .wk .today{outline:2px solid var(--accent);outline-offset:1px}
 .wk .fut{opacity:.55}
+.wk .rst{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.pill.restday{background:var(--accent-soft);color:var(--accent)}
 .check{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
 .cb{width:44px;height:44px;border-radius:12px;border:2px solid var(--line);background:var(--bg);display:grid;place-items:center;padding:0;font-size:24px;font-weight:700;color:transparent}
 .check.on .cb{background:var(--ok);border-color:var(--ok);color:#fff}
@@ -296,7 +298,7 @@ if(firstRun){try{localStorage.setItem('ptc-state',JSON.stringify(ST))}catch(e){}
 /* ---------- persistence ---------- */
 let saveT=null, chain=Promise.resolve(); const dayTimers={};
 function setSync(t,bad){const el=$('sync');el.textContent=t;el.style.color=bad?'var(--bad)':''}
-function save(){clearTimeout(saveT);saveT=setTimeout(()=>{const snap=clone(ST);chain=chain.then(async()=>{
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>{saveT=null;const snap=clone(ST);chain=chain.then(async()=>{
   if(mode==='db'){await stateRef.set(snap);setSync('Saved to your account')}else{try{localStorage.setItem('ptc-state',JSON.stringify(snap))}catch(e){}setSync('Saved on this phone')}
 }).catch(err=>setSync('Not saved — '+(err&&err.code==='quota_exceeded'?'storage full':'check connection'),true))},400)}
 function saveDay(k){clearTimeout(dayTimers[k]);dayTimers[k]=setTimeout(()=>{delete dayTimers[k];const doc=clone(DD[k]);chain=chain.then(async()=>{
@@ -321,13 +323,19 @@ function planFor(p,date){
   const d=docOf(p,date);
   if(d&&dtIndex(p,d.dayTypeId)>=0)return p.dayTypes[dtIndex(p,d.dayTypeId)];
   let best=null;
-  for(const k in DD){const x=DD[k];if(x.pid===p.id&&x.date<date&&anyChecked(x)&&(!best||x.date>best.date))best=x}
+  for(const k in DD){const x=DD[k];if(x.pid===p.id&&x.date<date&&rotChecked(p,x)&&(!best||x.date>best.date))best=x}
   if(!best)return p.dayTypes[0];
   const i=dtIndex(p,best.dayTypeId);
   return p.dayTypes[(i<0?0:i+1)%p.dayTypes.length];
 }
 function ensureDoc(p,date,dt){const k=docKey(p,date);if(!DD[k])DD[k]={pid:p.id,date,dayTypeId:dt.id,checked:{},reps:{},pain:null,note:''};return DD[k]}
-function streak(p){const set=new Set(Object.values(DD).filter(x=>x.pid===p.id&&anyChecked(x)).map(x=>x.date));let k=dayKey(),n=0;if(!set.has(k))k=addDays(k,-1);while(set.has(k)){n++;k=addDays(k,-1)}return n}
+function rotChecked(p,x){const dt=p.dayTypes[dtIndex(p,x.dayTypeId)];return!!(dt&&x.checked&&dt.exercises.some(e=>x.checked[e.id]))}
+function isRest(p,date){const d=docOf(p,date);if(d&&d.rest===true)return true;if(d&&d.rest===false)return false;return(p.restDays||[]).includes(parseKey(date).getDay())}
+function shownList(p,dt,date){return isRest(p,date)?(p.restKeepsDaily!==false?p.daily.exercises:[]):todayList(p,dt)}
+// Rest days keep the streak alive without adding to it.
+function streak(p){const set=new Set(Object.values(DD).filter(x=>x.pid===p.id&&anyChecked(x)).map(x=>x.date));let k=dayKey(),n=0,guard=0;
+  if(!set.has(k))k=addDays(k,-1);
+  while(guard++<730&&k>=p.startDate){if(set.has(k))n++;else if(!isRest(p,k))break;k=addDays(k,-1)}return n}
 function sidesOf(ex){return ex.side==='each'?['Left side','Right side']:ex.side==='left'?['Left side']:ex.side==='right'?['Right side']:['']}
 function doseText(ex,reps){if(ex.unit==='min')return reps+' min';let t=ex.sets+' × '+reps;if(ex.holdSec>0)t+=' · '+ex.holdSec+' s hold';if(SIDES[ex.side])t+=' · '+SIDES[ex.side];return t}
 function demoFor(ex){if(!ex||ex.demo==='none')return null;if(ex.demo&&DEMOS[ex.demo])return DEMOS[ex.demo];const n=(ex.name||'').toLowerCase();return Object.values(DEMOS).find(d=>d.match.test(n))||null}
@@ -347,22 +355,34 @@ function render(){
 }
 function vToday(){
   const p=prof(),today=dayKey(),dt=planFor(p,today),wk=weekNo(p,today),d=docOf(p,today);
-  const exs=todayList(p,dt),done=exs.filter(e=>d&&d.checked[e.id]).length;
+  const rest=isRest(p,today),exs=shownList(p,dt,today),done=exs.filter(e=>d&&d.checked[e.id]).length;
+  const scheduledRest=(p.restDays||[]).includes(new Date().getDay());
   let h='';
   if(ST.exampleBanner)h+='<div class="banner"><p><b>Day 1 has example exercises.</b> Swap in your own list under Program, or load a ready-made plan there (like the lumbar pinched-nerve plan).</p><button class="btn sm ghost" data-a="dismiss">Got it</button></div>';
+  if(rest){
+    h+='<section class="card hero"><div class="row between"><span class="eyebrow">'+DAYS[new Date().getDay()]+' · Week '+wk+'</span><span class="pill restday">Rest day</span></div>';
+    h+='<h2>Rest day</h2><p class="small muted" style="margin:0">'+(exs.length?'Just your every-day exercises today. ':'Nothing to do today. ')+'Your streak stays, and the next workout picks up with '+dayLabel(p,dt)+' · '+esc(dt.name)+'.</p>';
+    if(exs.length)h+='<div class="prog"><i style="width:'+(done/exs.length*100)+'%"></i></div>';
+    h+='<button class="btn" data-a="restoff">'+(scheduledRest&&!(d&&d.rest===true)?'Work out anyway':'Undo rest day')+'</button></section>';
+  }else{
   h+='<section class="card hero"><div class="row between"><span class="eyebrow">'+DAYS[new Date().getDay()]+' · Week '+wk+'</span>'+(exs.length&&done===exs.length?'<span class="pill done">✓ All done</span>':'<span class="pill due">'+done+' of '+exs.length+' done</span>')+'</div>';
   h+='<h2>'+dayLabel(p,dt)+' · '+esc(dt.name)+'</h2>';
   h+='<div class="prog"><i style="width:'+(exs.length?done/exs.length*100:0)+'%"></i></div>';
   if(wk>1&&(p.increment||0))h+='<p class="small muted" style="margin:0">Week '+wk+': <span class="up">+'+(p.increment*(wk-1))+' reps</span> on each progressing exercise.</p>';
   h+='<div class="daytabs" role="group" aria-label="Switch today\'s workout">'+p.dayTypes.map(x=>'<button class="daytab" data-a="setday" data-id="'+x.id+'" aria-pressed="'+(x.id===dt.id)+'">'+dayLabel(p,x)+'<small>'+esc(x.name)+'</small></button>').join('')+'</div>';
   h+='</section>';
+  }
   const card=ex=>{const on=!!(d&&d.checked[ex.id]);const reps=(on&&d.reps&&d.reps[ex.id])||repsFor(p,ex,today);const v=vidSrc(ex);const open=openVid.has(ex.id);
     return'<article class="card check'+(on?' on':'')+'"><button class="cb" data-a="check" data-id="'+ex.id+'" aria-pressed="'+on+'" aria-label="Mark '+esc(ex.name)+' done">✓</button><div class="info"><h3>'+esc(ex.name)+'</h3><span class="dose">'+esc(doseText(ex,reps))+'</span>'+(ex.progress===false?'':'')+bandHtml(ex.band)+'</div><div class="acts">'+((v||ex.videoLink)?'<button class="iconbtn" data-a="vid" data-id="'+ex.id+'" aria-label="Show video" aria-pressed="'+open+'">▶</button>':'')+(ex.unit==='min'?'':'<button class="iconbtn" data-a="timer" data-id="'+ex.id+'" aria-label="Guided timer">⏱</button>')+'</div>'+
     (open?'<div class="more">'+(v?'<video class="vid" src="'+esc(v)+'" controls loop muted playsinline autoplay preload="auto"></video>':'')+(ex.videoLink?'<a class="btn sm" href="'+esc(ex.videoLink)+'" target="_blank" rel="noopener">Open video link ↗</a>':'')+(ex.notes?'<p class="small muted" style="margin:0;white-space:pre-wrap">'+esc(ex.notes)+'</p>':'')+'</div>':(ex.notes&&!on?'<p class="small muted" style="margin:0;grid-column:1/-1;white-space:pre-wrap">'+esc(ex.notes)+'</p>':''))+'</article>'};
+  if(rest){if(exs.length)h+='<span class="eyebrow">Every day</span><div class="exlist">'+exs.map(card).join('')+'</div>'}
+  else{
   if(p.daily.exercises.length)h+='<span class="eyebrow">Every day</span><div class="exlist">'+p.daily.exercises.map(card).join('')+'</div>';
   if(p.daily.exercises.length)h+='<span class="eyebrow">'+dayLabel(p,dt)+' · '+esc(dt.name)+'</span>';
   if(!dt.exercises.length)h+='<div class="card empty">No '+esc(dt.name)+' exercises yet.<br><br><button class="btn" data-a="goprog" data-id="'+dt.id+'">Add exercises</button></div>';
   h+='<div class="exlist">'+dt.exercises.map(card).join('')+'</div>';
+  h+='<button class="btn ghost" data-a="reston">Make today a rest day</button>';
+  }
   if(exs.length&&done===exs.length){
     h+='<section class="card"><span class="eyebrow">How did it feel? Pain 0–10</span><div class="painscale">'+Array.from({length:11},(_,i)=>'<button data-a="pain" data-id="'+i+'" aria-pressed="'+(d.pain===i)+'">'+i+'</button>').join('')+'</div><div class="row between small muted"><span>No pain</span><span>Worst</span></div><div class="f"><label for="t-note">Note (optional)</label><textarea id="t-note" placeholder="Left hip tight on bridges">'+esc(d.note||'')+'</textarea></div></section>';
   }
@@ -372,10 +392,11 @@ function vToday(){
 function vWeek(){
   const p=prof(),today=dayKey(),mon=mondayOf(today);
   const cell=k=>{const d=docOf(p,k);const dt=d&&p.dayTypes[dtIndex(p,d.dayTypeId)];const tot=dt?dt.exercises.length+p.daily.exercises.length:0;const n=d?Object.values(d.checked||{}).filter(Boolean).length:0;
-    const cls=(n&&tot&&n>=tot?'full':n?'part':'')+(k===today?' today':'')+(k>today?' fut':'');
-    return'<div class="'+cls+'"><span>'+DAYS[parseKey(k).getDay()]+'</span><b>'+(dt&&n?'D'+(dtIndex(p,dt.id)+1):k>today?'':'–')+'</b><span>'+(n?n+'/'+tot:k===today?'today':'')+'</span></div>'};
+    const r=isRest(p,k),rotN=dt?dt.exercises.filter(e=>d.checked&&d.checked[e.id]).length:0;
+    const cls=(r&&!rotN?'rst':n&&tot&&n>=tot?'full':n?'part':'')+(k===today?' today':'')+(k>today&&!r?' fut':'');
+    return'<div class="'+cls+'"><span>'+DAYS[parseKey(k).getDay()]+'</span><b>'+(r&&!rotN?'Rest':dt&&n?'D'+(dtIndex(p,dt.id)+1):k>today?'':'–')+'</b><span>'+(r&&!rotN?(n?n+' done':''):n?n+'/'+tot:k===today?'today':'')+'</span></div>'};
   let h='<h2 style="font-size:22px">Week '+weekNo(p,today)+'</h2>';
-  h+='<section class="card"><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(mon,i))).join('')+'</div><p class="small muted" style="margin:0">Green = every exercise checked. Amber = some. The next workout always picks up the day after your last one, so a missed day doesn’t skip a body area.</p></section>';
+  h+='<section class="card"><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(mon,i))).join('')+'</div><p class="small muted" style="margin:0">Green = every exercise checked. Amber = some. Blue = rest day. The next workout always picks up the day after your last one, so a missed day doesn’t skip a body area.</p></section>';
   const wks=[];for(let w=1;w<=8;w++){const m=addDays(mon,-7*w);if(m<mondayOf(p.startDate))break;wks.push(m)}
   if(wks.length)h+='<section class="card"><span class="eyebrow">Earlier weeks</span>'+wks.map(m=>'<div><div class="small muted" style="margin-bottom:4px">Week '+weekNo(p,m)+' · '+(parseKey(m).getMonth()+1)+'/'+parseKey(m).getDate()+'</div><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(m,i))).join('')+'</div></div>').join('')+'</section>';
   const pains=Object.values(DD).filter(x=>x.pid===p.id&&x.pain!=null).sort((a,b)=>a.date<b.date?-1:1).slice(-20);
@@ -451,7 +472,7 @@ function setCheck(exId,val,reps){
   const p=prof(),today=dayKey(),dt=planFor(p,today),d=ensureDoc(p,today,dt);
   d.checked={...d.checked,[exId]:!!val};d.reps={...(d.reps||{})};
   if(val)d.reps[exId]=reps;else delete d.reps[exId];
-  if(val&&todayList(p,dt).every(e=>d.checked[e.id]))beep(1040,.3);
+  if(val&&shownList(p,dt,today).every(e=>d.checked[e.id]))beep(1040,.3);
   saveDay(docKey(p,today));
 }
 
@@ -518,6 +539,10 @@ function profForm(){
   let h='<div class="row between"><h2 style="font-size:22px">'+(MD.isNew?'Add person':'Settings')+'</h2><button class="btn sm ghost" data-a="mclose">Cancel</button></div>';
   h+='<div class="f"><label for="p-name">Name</label><input id="p-name" value="'+esc(p.name)+'" placeholder="Dad"></div>';
   h+='<div class="grid2"><div class="f"><label for="p-inc">Reps added each week</label><input id="p-inc" type="number" inputmode="numeric" min="0" max="50" value="'+(p.increment??2)+'"></div><div class="f"><label for="p-wk">This is program week</label><input id="p-wk" type="number" inputmode="numeric" min="1" max="520" value="'+wk+'"></div></div>';
+  const rd=p.restDays||[];
+  h+='<div class="f"><span class="l">Rest days every week</span><div class="days">'+[1,2,3,4,5,6,0].map(i=>'<label><input type="checkbox" id="p-r'+i+'" '+(rd.includes(i)?'checked':'')+'>'+DAYS[i]+'</label>').join('')+'</div></div>';
+  h+='<label class="check2"><input type="checkbox" id="p-rkd" '+(p.restKeepsDaily!==false?'checked':'')+'> Still do the Every-day exercises on rest days</label>';
+  h+='<p class="small muted" style="margin:0">On a rest day the rotation waits: the next workout picks up where you left off, and your streak doesn’t break. You can also tap “Make today a rest day” on Today.</p>';
   h+='<div class="f"><label for="p-time">Daily reminder time</label><input id="p-time" type="time" value="'+esc(p.reminder&&p.reminder.time||'')+'"></div><p class="small muted" style="margin:0">This page can’t ring your phone. Set a phone alarm for this time.</p>';
   h+='<button class="btn primary big" data-a="psave">Save</button>';
   if(!MD.isNew)h+='<div class="vbox"><span class="eyebrow">Backup</span><p class="small muted" style="margin:0">Your program and check-offs are stored on this phone only. Save a backup now and then (e-mail it to yourself or keep it in Files) so clearing the browser or a new phone doesn’t lose them. Uploaded videos aren’t in the backup.</p><div class="grid2"><button class="btn" data-a="backup">Save backup</button><label class="btn" for="f-restore">Restore backup</label></div><input id="f-restore" type="file" accept=".json,application/json" hidden><span class="err">'+esc(MD.berr||'')+'</span>'+(MD.bok?'<span class="small up">'+esc(MD.bok)+'</span>':'')+'</div>';
@@ -542,6 +567,8 @@ document.addEventListener('click',e=>{
     case'timer':startTimer(id);break;
     case'pain':{const d=docOf(p,today);if(!d)break;d.pain=+id;d.note=($('t-note')||{}).value||d.note;saveDay(docKey(p,today));render();break}
     case'ptab':progTab=id;MD=null;render();break;
+    case'reston':{const d=ensureDoc(p,today,planFor(p,today));d.rest=true;saveDay(docKey(p,today));render();window.scrollTo(0,0);break}
+    case'restoff':{const d=ensureDoc(p,today,planFor(p,today));d.rest=(p.restDays||[]).includes(new Date().getDay())?false:null;saveDay(docKey(p,today));render();break}
     case'presets':MD={kind:'preset'};openModal(presetList());break;
     case'presetpick':MD={kind:'preset',key:id};openModal(presetForm());break;
     case'presetload':{const k=MD.key;loadPreset(p,k);ST.exampleBanner=false;progTab=k==='yti'?p.dayTypes[2].id:DAILY;save();closeModal();view=k==='yti'?'program':'today';render();window.scrollTo(0,0);setSync('Plan loaded');break}
@@ -563,8 +590,8 @@ document.addEventListener('click',e=>{
     case'editprof':MD={kind:'p',isNew:false,p:clone(p)};openModal(profForm());break;
     case'psave':{const name=$('p-name').value.trim();if(!name){$('p-name').focus();break}
       const np=MD.p,inc=Math.max(0,Math.min(50,parseInt($('p-inc').value,10)||0)),wk=Math.max(1,parseInt($('p-wk').value,10)||1);
-      np.name=name;np.increment=inc;np.reminder={time:$('p-time').value};np.startDate=addDays(mondayOf(today),-7*(wk-1));
-      const i=ST.profiles.findIndex(x=>x.id===np.id);if(i<0){ST.profiles.push(np);ST.activeId=np.id}else{Object.assign(ST.profiles[i],{name:np.name,increment:np.increment,reminder:np.reminder,startDate:np.startDate})}
+      np.name=name;np.increment=inc;np.reminder={time:$('p-time').value};np.restDays=[0,1,2,3,4,5,6].filter(i=>$('p-r'+i).checked);np.restKeepsDaily=$('p-rkd').checked;np.startDate=addDays(mondayOf(today),-7*(wk-1));
+      const i=ST.profiles.findIndex(x=>x.id===np.id);if(i<0){ST.profiles.push(np);ST.activeId=np.id}else{Object.assign(ST.profiles[i],{name:np.name,increment:np.increment,reminder:np.reminder,startDate:np.startDate,restDays:np.restDays,restKeepsDaily:np.restKeepsDaily})}
       save();closeModal();render();break}
     case'pdel':{if(!MD.confirmDel){MD.p.name=$('p-name').value||MD.p.name;MD.confirmDel=true;openModal(profForm());break}
       const gone=ST.profiles.find(x=>x.id===MD.p.id);if(gone)for(const dt of [gone.daily,...gone.dayTypes])for(const ex of dt.exercises)if(ex.videoId)assets&&assets.delete(ex.videoId).catch(()=>{});
