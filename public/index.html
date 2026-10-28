@@ -303,6 +303,10 @@ function saveDay(k){clearTimeout(dayTimers[k]);dayTimers[k]=setTimeout(()=>{dele
   if(mode==='db'){await dayCol.doc(k).set(doc);setSync('Saved to your account')}else{try{localStorage.setItem('ptc-days',JSON.stringify(DD))}catch(e){}setSync('Saved on this phone')}
 }).catch(err=>setSync('Not saved — '+(err&&err.code==='quota_exceeded'?'storage full':'check connection'),true))},300)}
 
+function flushNow(){if(mode!=='local')return;let any=false;if(saveT){clearTimeout(saveT);saveT=null;any=true}for(const k in dayTimers){clearTimeout(dayTimers[k]);delete dayTimers[k];any=true}
+  if(any){try{localStorage.setItem('ptc-state',JSON.stringify(ST));localStorage.setItem('ptc-days',JSON.stringify(DD))}catch(e){}}}
+window.addEventListener('pagehide',flushNow);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushNow()});
 /* ---------- program logic ---------- */
 const prof=()=>ST.profiles.find(p=>p.id===ST.activeId)||ST.profiles[0];
 const docKey=(p,date)=>p.id+'_'+date;
