@@ -1,8 +1,10 @@
 // Offline support: the page itself is fetched fresh when there's signal and
 // falls back to the saved copy when there isn't; demo videos and icons are cached.
-const CACHE = 'ptc-v1';
+const CACHE = 'ptc-v2';
 const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png',
-  '/demos/glute-bridge.mp4', '/demos/clamshell.mp4', '/demos/heel-slide.mp4', '/demos/calf-stretch.mp4'];
+  '/demos/glute-bridge.mp4', '/demos/clamshell.mp4', '/demos/heel-slide.mp4', '/demos/calf-stretch.mp4',
+  '/demos/prone-press-up.mp4', '/demos/pelvic-tilt.mp4', '/demos/nerve-glide.mp4', '/demos/dead-bug.mp4', '/demos/bird-dog.mp4', '/demos/side-plank-knees.mp4',
+  '/demos/cat-cow.mp4', '/demos/childs-pose.mp4', '/demos/figure-four.mp4', '/demos/hip-flexor-stretch.mp4', '/demos/hamstring-strap.mp4'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u =>
