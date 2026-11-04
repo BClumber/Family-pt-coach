@@ -1,6 +1,6 @@
 // Offline support: the page itself is fetched fresh when there's signal and
 // falls back to the saved copy when there isn't; demo videos and icons are cached.
-const CACHE = 'ptc-v5';
+const CACHE = 'ptc-v6';
 const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png',
   '/demos/glute-bridge.mp4', '/demos/clamshell.mp4', '/demos/heel-slide.mp4', '/demos/calf-stretch.mp4',
   '/demos/prone-press-up.mp4', '/demos/pelvic-tilt.mp4', '/demos/nerve-glide.mp4', '/demos/dead-bug.mp4', '/demos/bird-dog.mp4', '/demos/side-plank-knees.mp4',
@@ -21,10 +21,19 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET' || url.origin !== location.origin) return;
   if (url.pathname.startsWith('/login') || url.pathname === '/healthz') return;
   if (req.mode === 'navigate' || url.pathname === '/') {
-    e.respondWith(fetch(req).then(r => {
+    // Try the server first, but if it's asleep (free Render plan) open the saved copy after 4 s.
+    const net = fetch(req).then(r => {
       if (r.ok && !r.redirected && url.pathname === '/') { const copy = r.clone(); caches.open(CACHE).then(c => c.put('/', copy)); }
       return r;
-    }).catch(() => caches.match('/').then(r => r || Response.error())));
+    });
+    e.waitUntil(net.catch(() => {}));
+    e.respondWith(new Promise(resolve => {
+      let done = false;
+      const fallback = () => caches.match('/').then(c => { if (!done && c) { done = true; resolve(c); } return c; });
+      const timer = setTimeout(fallback, 4000);
+      net.then(r => { clearTimeout(timer); if (!done) { done = true; resolve(r); } })
+         .catch(() => fallback().then(c => { if (!done) { done = true; resolve(c || Response.error()); } }));
+    }));
     return;
   }
   if (req.headers.has('range')) return; // let the browser stream video ranges from the network

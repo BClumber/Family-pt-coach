@@ -311,22 +311,28 @@ async function loadVideos(){if(!assets)return;for(const p of ST.profiles)for(con
   try{if(!URLS[ex.videoId]){const b=await VDB.get(ex.videoId);if(b)URLS[ex.videoId]=URL.createObjectURL(b)}}catch(e){}ex.videoUrl=URLS[ex.videoId]||''}}
 try{ST=JSON.parse(localStorage.getItem('ptc-state')||'null');DD=JSON.parse(localStorage.getItem('ptc-days')||'{}')||{}}catch(e){}
 const firstRun=!ST||ST.v!==2;ST=migrate(ST);
-if(firstRun){try{localStorage.setItem('ptc-state',JSON.stringify(ST))}catch(e){}}
+if(firstRun){try{ST.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(ST))}catch(e){}}
 
 /* ---------- persistence ---------- */
 let saveT=null, chain=Promise.resolve(); const dayTimers={};
 function setSync(t,bad){const el=$('sync');el.textContent=t;el.style.color=bad?'var(--bad)':''}
-function save(){clearTimeout(saveT);saveT=setTimeout(()=>{saveT=null;const snap=clone(ST);chain=chain.then(async()=>{
-  if(mode==='db'){await stateRef.set(snap);setSync('Saved to your account')}else{try{localStorage.setItem('ptc-state',JSON.stringify(snap))}catch(e){}setSync('Saved on this phone')}
-}).catch(err=>setSync('Not saved — '+(err&&err.code==='quota_exceeded'?'storage full':'check connection'),true))},400)}
-function saveDay(k){clearTimeout(dayTimers[k]);dayTimers[k]=setTimeout(()=>{delete dayTimers[k];const doc=clone(DD[k]);chain=chain.then(async()=>{
-  if(mode==='db'){await dayCol.doc(k).set(doc);setSync('Saved to your account')}else{try{localStorage.setItem('ptc-days',JSON.stringify(DD))}catch(e){}setSync('Saved on this phone')}
-}).catch(err=>setSync('Not saved — '+(err&&err.code==='quota_exceeded'?'storage full':'check connection'),true))},300)}
-
-function flushNow(){if(mode!=='local')return;let any=false;if(saveT){clearTimeout(saveT);saveT=null;any=true}for(const k in dayTimers){clearTimeout(dayTimers[k]);delete dayTimers[k];any=true}
-  if(any){try{localStorage.setItem('ptc-state',JSON.stringify(ST));localStorage.setItem('ptc-days',JSON.stringify(DD))}catch(e){}}}
+const failMsg='Not saved — phone storage is full or blocked. Save a backup in Settings.';
+function readStored(key,fallback){try{return JSON.parse(localStorage.getItem(key)||'null')||fallback}catch(e){return fallback}}
+// Bring in anything newer that another open copy of the app saved. Each day keeps whichever copy was changed last.
+function mergeStoredDays(){const st=readStored('ptc-days',{});let changed=false;
+  for(const k in st){const a=st[k],b=DD[k];if(!b||((a&&a.t)||0)>((b&&b.t)||0)){if(!dayTimers[k]){DD[k]=a;changed=true}}}return changed}
+function writeDays(){mergeStoredDays();localStorage.setItem('ptc-days',JSON.stringify(DD))}
+function writeState(){ST.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(ST))}
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>{saveT=null;try{writeState();setSync('Saved on this phone')}catch(e){setSync(failMsg,true)}},400)}
+function saveDay(k){if(DD[k])DD[k].t=Date.now();clearTimeout(dayTimers[k]);dayTimers[k]=setTimeout(()=>{delete dayTimers[k];try{writeDays();setSync('Saved on this phone')}catch(e){setSync(failMsg,true)}},300)}
+function flushNow(){let s1=false,s2=false;if(saveT){clearTimeout(saveT);saveT=null;s1=true}for(const k in dayTimers){clearTimeout(dayTimers[k]);delete dayTimers[k];s2=true}
+  try{if(s1)writeState();if(s2)writeDays()}catch(e){setSync(failMsg,true)}}
 window.addEventListener('pagehide',flushNow);
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushNow()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushNow();else syncFromStorage()});
+window.addEventListener('storage',e=>{if(e.key==='ptc-days'||e.key==='ptc-state')syncFromStorage()});
+function syncFromStorage(){let changed=mergeStoredDays();
+  const st=readStored('ptc-state',null);if(st&&st.t&&st.t>(ST.t||0)&&!saveT){ST=migrate(st);changed=true;loadVideos().then(()=>{if(!busy())render()})}
+  if(changed&&!busy())render()}
 /* ---------- program logic ---------- */
 const prof=()=>ST.profiles.find(p=>p.id===ST.activeId)||ST.profiles[0];
 const docKey=(p,date)=>p.id+'_'+date;
@@ -339,7 +345,7 @@ function getList(p,id){return id===DAILY?p.daily:p.dayTypes[dtIndex(p,id)]}
 const todayList=(p,dt)=>[...p.daily.exercises,...dt.exercises];
 function planFor(p,date){
   const d=docOf(p,date);
-  if(d&&dtIndex(p,d.dayTypeId)>=0)return p.dayTypes[dtIndex(p,d.dayTypeId)];
+  if(d&&dtIndex(p,d.dayTypeId)>=0&&(d.pick||rotChecked(p,d)))return p.dayTypes[dtIndex(p,d.dayTypeId)];
   let best=null;
   for(const k in DD){const x=DD[k];if(x.pid===p.id&&x.date<date&&rotChecked(p,x)&&(!best||x.date>best.date))best=x}
   if(!best)return p.dayTypes[0];
@@ -361,9 +367,10 @@ function forecast(p,fromDate,days){
   for(let k=1;k<=days;k++){const day=addDays(fromDate,k);if(isRest(p,day)){out[day]='rest';continue}out[day]=p.dayTypes[i];i=(i+1)%n}
   return out;
 }
+function firstDate(p){let f=p.startDate;for(const k in DD){const x=DD[k];if(x.pid===p.id&&x.date<f)f=x.date}return f}
 function streak(p){const set=new Set(Object.values(DD).filter(x=>x.pid===p.id&&anyChecked(x)).map(x=>x.date));let k=dayKey(),n=0,guard=0;
   if(!set.has(k))k=addDays(k,-1);
-  while(guard++<730&&k>=p.startDate){if(set.has(k))n++;else if(!isRest(p,k))break;k=addDays(k,-1)}return n}
+  const f0=firstDate(p);while(guard++<730&&k>=f0){if(set.has(k))n++;else if(!isRest(p,k))break;k=addDays(k,-1)}return n}
 function sidesOf(ex){return ex.side==='each'?['Left side','Right side']:ex.side==='left'?['Left side']:ex.side==='right'?['Right side']:['']}
 function doseText(ex,reps){if(ex.unit==='min')return reps+' min';let t=ex.sets+' × '+reps;if(ex.holdSec>0)t+=' · '+ex.holdSec+' s hold';if(SIDES[ex.side])t+=' · '+SIDES[ex.side];return t}
 function demoFor(ex){if(!ex||ex.demo==='none')return null;if(ex.demo&&DEMOS[ex.demo])return DEMOS[ex.demo];const n=(ex.name||'').toLowerCase();return Object.values(DEMOS).find(d=>d.match.test(n))||null}
@@ -386,6 +393,7 @@ function vToday(){
   const rest=isRest(p,today),exs=shownList(p,dt,today),done=exs.filter(e=>d&&d.checked[e.id]).length;
   const scheduledRest=(p.restDays||[]).includes(new Date().getDay());
   let h='';
+  if(isIOS&&!standalone&&!iosHint)h+='<div class="banner" style="background:var(--warn-soft)"><p><b>Use the home-screen app.</b> On iPhone, Safari and the home-screen icon keep separate check-offs, and Safari can clear them after a week away. Tap Share → Add to Home Screen and always open it from there.</p><button class="btn sm ghost" data-a="iosok">OK</button></div>';
   if(ST.exampleBanner)h+='<div class="banner"><p><b>Day 1 has example exercises.</b> Swap in your own list under Program, or load a ready-made plan there (like the lumbar pinched-nerve plan).</p><button class="btn sm ghost" data-a="dismiss">Got it</button></div>';
   if(rest){
     h+='<section class="card hero"><div class="row between"><span class="eyebrow">'+DAYS[new Date().getDay()]+' · Week '+wk+'</span><span class="pill restday">Rest day</span></div>';
@@ -418,6 +426,9 @@ function vToday(){
   return h;
 }
 let selDay=null,editDay=null;
+const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const standalone=navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+let iosHint=false;try{iosHint=sessionStorage.getItem('ptc-ios')==='1'}catch(e){}
 function dayInfo(p,k){
   const d=docOf(p,k),dt=d&&p.dayTypes[dtIndex(p,d.dayTypeId)],rest=isRest(p,k);
   const list=dt?(d.rest===true||rest?p.daily.exercises:[...p.daily.exercises,...dt.exercises]):p.daily.exercises;
@@ -433,16 +444,16 @@ function vWeek(){
     let cls='',top='',bot='';
     if(fut){if(f==='rest'){cls='rst plan';top='Rest'}else if(f){cls='plan';top='D'+(dtIndex(p,f.id)+1);bot='next'}}
     else if(I.rest&&!(I.d&&rotChecked(p,I.d))){cls='rst';top='Rest';bot=I.n?I.n+' done':''}
-    else{cls=I.n&&I.n>=I.tot?'full':I.n?'part':'';top=I.dt&&I.n?'D'+(dtIndex(p,I.dt.id)+1):'–';bot=I.n?I.n+'/'+I.tot:(k===today?'today':'')}
+    else{cls=I.n&&I.n>=I.tot?'full':I.n?'part':'';top=I.d&&rotChecked(p,I.d)?'D'+(dtIndex(p,I.dt.id)+1):I.n?'✓':'–';bot=I.n?I.n+'/'+I.tot:(k===today?'today':'')}
     return'<button class="'+cls+(k===today?' today':'')+(k===selDay?' sel':'')+'" data-a="wkday" data-id="'+k+'" aria-pressed="'+(k===selDay)+'"><span>'+DAYS[parseKey(k).getDay()]+'</span><b>'+top+'</b><span>'+bot+'</span></button>'};
   let h='<h2 style="font-size:22px">Week '+weekNo(p,today)+'</h2>';
   h+='<section class="card"><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(mon,i))).join('')+'</div><p class="small muted" style="margin:0">Tap a day to see what you did. Green = all done, amber = some, blue = rest, dashed = coming up. A rest day pushes the next workout to the following day, so the order never skips.</p></section>';
   h+=dayDetail(p,selDay,today,fc);
-  const wks=[];for(let w=1;w<=8;w++){const m=addDays(mon,-7*w);if(m<mondayOf(p.startDate))break;wks.push(m)}
+  const wks=[],f0=mondayOf(firstDate(p));for(let w=1;w<=12;w++){const m=addDays(mon,-7*w);if(m<f0)break;wks.push(m)}
   if(wks.length)h+='<section class="card"><span class="eyebrow">Earlier weeks</span>'+wks.map(m=>'<div><div class="small muted" style="margin-bottom:4px">Week '+weekNo(p,m)+' · '+(parseKey(m).getMonth()+1)+'/'+parseKey(m).getDate()+'</div><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(m,i))).join('')+'</div></div>').join('')+'</section>';
-  const recent=Object.values(DD).filter(x=>x.pid===p.id&&x.date<=today&&Object.values(x.checked||{}).some(Boolean)).sort((a,b)=>a.date<b.date?1:-1).slice(0,30);
+  const recent=Object.values(DD).filter(x=>x.pid===p.id&&x.date<=today&&Object.values(x.checked||{}).some(Boolean)).sort((a,b)=>a.date<b.date?1:-1).slice(0,400);
   h+='<section class="card"><span class="eyebrow">History</span>'+(recent.length?'<div class="hist">'+recent.map(x=>{const I=dayInfo(p,x.date),names=I.list.filter(e=>I.doneIds.includes(e.id)).map(e=>e.name);
-    return'<div data-a="wkday" data-id="'+x.date+'" style="cursor:pointer"><span class="d">'+DAYS[parseKey(x.date).getDay()]+' '+(parseKey(x.date).getMonth()+1)+'/'+parseKey(x.date).getDate()+'</span><span class="n"><b>'+(I.rest&&!rotChecked(p,x)?'Rest day':I.dt?esc(I.dt.name):'Workout')+'</b> · '+I.n+' of '+I.tot+' done<br><span class="muted">'+esc(names.join(', '))+'</span>'+(x.note?'<br><span class="muted">“'+esc(x.note)+'”</span>':'')+'</span><span class="pain">'+(x.pain!=null?x.pain+'/10':'')+'</span></div>'}).join('')+'</div>':'<p class="small muted" style="margin:0">Nothing checked off yet. Every exercise you tick shows up here, even if you don’t finish the day.</p>')+'</section>';
+    return'<div data-a="wkday" data-id="'+x.date+'" style="cursor:pointer"><span class="d">'+DAYS[parseKey(x.date).getDay()]+' '+(parseKey(x.date).getMonth()+1)+'/'+parseKey(x.date).getDate()+'</span><span class="n"><b>'+(I.rest&&!rotChecked(p,x)?'Rest day':rotChecked(p,x)?esc(I.dt.name):'Every-day exercises')+'</b> · '+I.n+' of '+I.tot+' done<br><span class="muted">'+esc(names.join(', '))+'</span>'+(x.note?'<br><span class="muted">“'+esc(x.note)+'”</span>':'')+'</span><span class="pain">'+(x.pain!=null?x.pain+'/10':'')+'</span></div>'}).join('')+'</div>':'<p class="small muted" style="margin:0">Nothing checked off yet. Every exercise you tick shows up here, even if you don’t finish the day.</p>')+'</section>';
   const pains=Object.values(DD).filter(x=>x.pid===p.id&&x.pain!=null).sort((a,b)=>a.date<b.date?-1:1).slice(-20);
   h+='<section class="card"><span class="eyebrow">Pain after workouts (0–10)</span>'+chart(pains)+'</section>';
   return h;
@@ -465,7 +476,7 @@ function dayDetail(p,k,today,fc){
     return h+'</section>'}
   if(editDay===k)return h+editDayHtml(p,k)+'</section>';
   const I=dayInfo(p,k);
-  const title=I.rest&&!(I.d&&rotChecked(p,I.d))?'Rest day':I.dt?dayLabel(p,I.dt)+' · '+esc(I.dt.name):'No workout logged';
+  const title=I.rest&&!(I.d&&rotChecked(p,I.d))?'Rest day':I.d&&rotChecked(p,I.d)?dayLabel(p,I.dt)+' · '+esc(I.dt.name):I.n?'Every-day exercises only':'No workout logged';
   h+='<div class="row between"><h3 style="font-size:18px;margin:0">'+title+'</h3>'+(I.tot?'<span class="pill '+(I.n>=I.tot?'done':I.n?'due':'rest')+'">'+I.n+' of '+I.tot+' done</span>':'')+'</div>';
   if(I.list.length&&(I.d||k===today))h+='<ul class="dlist">'+I.list.map(e=>{const on=I.doneIds.includes(e.id),r=(I.d&&I.d.reps&&I.d.reps[e.id])||repsFor(p,e,k);return'<li class="'+(on?'':'no')+'"><span class="mk">'+(on?'✓':'○')+'</span><span>'+esc(e.name)+'</span><span class="dose">'+(e.sets?esc(doseText(e,r)):'')+'</span></li>'}).join('')+'</ul>';
   else h+='<p class="small muted" style="margin:0">Nothing checked off this day.</p>';
@@ -539,6 +550,7 @@ function renderDyn(){
 /* ---------- check-off ---------- */
 function setCheck(exId,val,reps){
   const p=prof(),today=dayKey(),dt=planFor(p,today),d=ensureDoc(p,today,dt);
+  if(!d.pick&&!rotChecked(p,d))d.dayTypeId=dt.id;
   d.checked={...d.checked,[exId]:!!val};d.reps={...(d.reps||{})};{const ex=todayList(p,dt).find(e=>e.id===exId);if(ex)d.names={...(d.names||{}),[exId]:ex.name}}
   if(val)d.reps[exId]=reps;else delete d.reps[exId];
   if(val&&shownList(p,dt,today).every(e=>d.checked[e.id]))beep(1040,.3);
@@ -614,7 +626,7 @@ function profForm(){
   h+='<p class="small muted" style="margin:0">On a rest day the rotation waits: the next workout picks up where you left off, and your streak doesn’t break. You can also tap “Make today a rest day” on Today.</p>';
   h+='<div class="f"><label for="p-time">Daily reminder time</label><input id="p-time" type="time" value="'+esc(p.reminder&&p.reminder.time||'')+'"></div><p class="small muted" style="margin:0">This page can’t ring your phone. Set a phone alarm for this time.</p>';
   h+='<button class="btn primary big" data-a="psave">Save</button>';
-  if(!MD.isNew)h+='<div class="vbox"><span class="eyebrow">Backup</span><p class="small muted" style="margin:0">Your program and check-offs are stored on this phone only. Save a backup now and then (e-mail it to yourself or keep it in Files) so clearing the browser or a new phone doesn’t lose them. Uploaded videos aren’t in the backup.</p><div class="grid2"><button class="btn" data-a="backup">Save backup</button><label class="btn" for="f-restore">Restore backup</label></div><input id="f-restore" type="file" accept=".json,application/json" hidden><span class="err">'+esc(MD.berr||'')+'</span>'+(MD.bok?'<span class="small up">'+esc(MD.bok)+'</span>':'')+'</div>';
+  if(!MD.isNew)h+='<div class="vbox"><span class="eyebrow">Backup</span><p class="small muted" style="margin:0">Your program and check-offs are stored on this phone only. Save a backup now and then (e-mail it to yourself or keep it in Files) so clearing the browser or a new phone doesn’t lose them. Uploaded videos aren’t in the backup.'+(ST.lastBackup?' Last backup: '+ST.lastBackup+'.':' No backup yet.')+'</p><div class="grid2"><button class="btn" data-a="backup">Save backup</button><label class="btn" for="f-restore">Restore backup</label></div><input id="f-restore" type="file" accept=".json,application/json" hidden><span class="err">'+esc(MD.berr||'')+'</span>'+(MD.bok?'<span class="small up">'+esc(MD.bok)+'</span>':'')+'</div>';
   if(!MD.isNew&&ST.profiles.length>1)h+='<button class="btn danger" data-a="pdel">'+(MD.confirmDel?'Tap again — deletes '+esc(p.name)+'’s program':'Remove person')+'</button>';
   return h;
 }
@@ -628,10 +640,14 @@ document.addEventListener('click',e=>{
   switch(a){
     case'nav':view=id;editDay=null;if(MD&&MD.delDay)MD=null;render();window.scrollTo(0,0);break;
     case'prof':selDay=null;editDay=null;ST.activeId=id;progTab=null;openVid.clear();save();render();break;
+    case'iosok':iosHint=true;try{sessionStorage.setItem('ptc-ios','1')}catch(e){}render();break;
     case'dismiss':ST.exampleBanner=false;save();render();break;
     case'goprog':progTab=id;view='program';render();break;
-    case'setday':{const dt=p.dayTypes[dtIndex(p,id)],d=docOf(p,today);if(!dt)break;if(d){if(d.dayTypeId===id)break;d.dayTypeId=id;d.checked={};d.reps={};d.pain=null}else ensureDoc(p,today,dt);saveDay(docKey(p,today));render();break}
-    case'check':{const dt=planFor(p,today),ex=todayList(p,dt).find(x=>x.id===id),d=docOf(p,today);const on=!(d&&d.checked[id]);setCheck(id,on,repsFor(p,ex,today));render();break}
+    case'setday':{const dt=p.dayTypes[dtIndex(p,id)];if(!dt)break;const cur=planFor(p,today),d=ensureDoc(p,today,cur);if(cur.id===id&&d.pick)break;
+      const old=p.dayTypes[dtIndex(p,d.dayTypeId)];d.checked={...d.checked};d.reps={...(d.reps||{})};
+      if(old&&old.id!==id)for(const e of old.exercises){delete d.checked[e.id];delete d.reps[e.id]}
+      d.dayTypeId=id;d.pick=true;saveDay(docKey(p,today));render();break}
+    case'check':{const dt=planFor(p,today),ex=todayList(p,dt).find(x=>x.id===id),d=docOf(p,today);if(!ex){render();break}const on=!(d&&d.checked[id]);setCheck(id,on,repsFor(p,ex,today));render();break}
     case'vid':openVid.has(id)?openVid.delete(id):openVid.add(id);render();break;
     case'timer':startTimer(id);break;
     case'pain':{const d=docOf(p,today);if(!d)break;d.pain=+id;d.note=($('t-note')||{}).value||d.note;saveDay(docKey(p,today));render();break}
@@ -644,7 +660,7 @@ document.addEventListener('click',e=>{
     case'edset':{const k=editDay,d=ensureDoc(p,k,planFor(p,k)),sched=(p.restDays||[]).includes(parseKey(k).getDay());
       const old=p.dayTypes[dtIndex(p,d.dayTypeId)];d.checked={...d.checked};
       if(id==='rest'){if(old)for(const e of old.exercises)delete d.checked[e.id];d.rest=sched?null:true}
-      else{if(old&&old.id!==id)for(const e of old.exercises)delete d.checked[e.id];d.dayTypeId=id;d.rest=sched?false:null}
+      else{if(old&&old.id!==id)for(const e of old.exercises)delete d.checked[e.id];d.dayTypeId=id;d.pick=true;d.rest=sched?false:null}
       saveDay(docKey(p,k));render();break}
     case'edtog':{const k=editDay,d=ensureDoc(p,k,planFor(p,k)),ex=[p.daily,...p.dayTypes].flatMap(l=>l.exercises).find(e=>e.id===id);
       const on=!d.checked[id];d.checked={...d.checked,[id]:on};d.reps={...(d.reps||{})};d.names={...(d.names||{})};
@@ -683,7 +699,7 @@ document.addEventListener('click',e=>{
       const fn='pt-backup-'+dayKey()+'.json';const file=new File([blob],fn,{type:'application/json'});
       if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:'PT backup'}).catch(()=>{})}
       else{const u=URL.createObjectURL(blob),l=document.createElement('a');l.href=u;l.download=fn;document.body.appendChild(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)}
-      MD.bok='Backup saved as '+fn;MD.berr='';openModal(profForm());break}
+      ST.lastBackup=dayKey();save();MD.bok='Backup saved as '+fn;MD.berr='';openModal(profForm());break}
     case'mclose':case'mbg':closeModal();break;
     case'shold':beep(660,.08);S.phase='hold';S.until=Date.now()+S.ex.holdSec*1000;renderDyn();break;
     case'srep':S.rep++;beep(700,.05);if(S.rep>=S.ex.reps){beep(990,.3);sideDone()}if(S)renderDyn();break;
@@ -705,7 +721,7 @@ document.addEventListener('change',async e=>{
   if((e.target.id==='f-demo'||e.target.id==='f-unit')&&MD){readExForm();openModal(exForm());return}
   if(e.target.id==='f-restore'&&MD){const f=e.target.files&&e.target.files[0];if(!f)return;
     try{const data=JSON.parse(await f.text());if(data.app!=='family-pt-coach'||!data.state)throw new Error('not a PT backup');
-      ST=migrate(data.state);DD=data.days||{};await loadVideos();try{localStorage.setItem('ptc-state',JSON.stringify(ST));localStorage.setItem('ptc-days',JSON.stringify(DD))}catch(x){}
+      ST=migrate(data.state);DD=data.days||{};const now=Date.now();for(const k in DD)if(DD[k])DD[k].t=now;await loadVideos();try{writeState();localStorage.setItem('ptc-days',JSON.stringify(DD))}catch(x){setSync(failMsg,true)}
       closeModal();render();setSync('Backup restored')}catch(err){MD.berr='That file isn’t a PT Coach backup ('+err.message+').';MD.bok='';openModal(profForm())}return}
   if(e.target.id!=='f-vid'||!MD)return;
   const file=e.target.files&&e.target.files[0];if(!file)return;readExForm();MD.verr='';

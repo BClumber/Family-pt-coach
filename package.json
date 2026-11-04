@@ -4,6 +4,11 @@
   "private": true,
   "description": "Family physical therapy check-off app: 3-day rotation, weekly rep increases, demo videos.",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=18" }
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/app.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }
