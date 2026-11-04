@@ -119,5 +119,57 @@ const loadPlan=async(pg,k)=>{await go(pg,'program');await pg.click('[data-a=pres
  {const{ctx,pg}=await fresh(b);await pg.waitForTimeout(1500);await pg.reload();await pg.waitForTimeout(800);
   await ctx.setOffline(true);await pg.reload();const okOff=await pg.locator('.check').count();ok(okOff>0,'opens with no signal');await ctx.close()}
 
+ console.log('Missed exercises carry over');
+ {const seed=(daysAgo)=>()=>{};
+  const setup=async(pg,ago,extra)=>pg.evaluate(([k,x])=>{const s=JSON.parse(localStorage.getItem('ptc-state'));const p=s.profiles[0];p.restDays=[];
+     p.dayTypes[0].exercises=[{id:'sq',name:'Wall squat',sets:2,reps:10,holdSec:0,restSec:30,side:'both',progress:true},{id:'lu',name:'Lunge',sets:2,reps:10,holdSec:0,restSec:30,side:'both',progress:true}];
+     p.dayTypes[1].exercises=[{id:'db',name:'Dead bug',sets:2,reps:8,holdSec:0,restSec:30,side:'both',progress:true}];
+     s.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(s));
+     const days={[p.id+'_'+k]:{pid:p.id,date:k,dayTypeId:p.dayTypes[0].id,checked:{sq:true},reps:{},t:1}};Object.assign(days,x||{});
+     localStorage.setItem('ptc-days',JSON.stringify(days))},[ago,extra]);
+  const{ctx,pg}=await fresh(b);await setup(pg,key(1));await pg.reload();await pg.waitForSelector('.hero');
+  ok((await T(pg,'.hero h2')).includes('Day 2'),'rotation moved on to Day 2');
+  const carry=await pg.locator('.check.carry h3').allTextContents();ok(carry.length===1&&carry[0]==='Lunge','missed Lunge carried over');
+  ok((await T(pg,'.check.carry .pill'))==='Missed yesterday','marked "Missed yesterday"');
+  ok((await T(pg,'.hero .pill')).includes('of 2'),'counts toward today');
+  // two days later it is still there, labelled since
+  await setup(pg,key(2));await pg.reload();await pg.waitForSelector('.hero');
+  ok((await T(pg,'.check.carry .pill')).startsWith('Missed '),'still carried two days later: '+(await T(pg,'.check.carry .pill')));
+  // tick it: stays on screen ticked, then gone the next day
+  await pg.click('.check.carry [data-a=check]');await pg.waitForTimeout(500);await pg.reload();await pg.waitForSelector('.hero');
+  ok(await pg.locator('.check.carry.on').count()===1,'ticked carry-over stays ticked today');
+  await pg.evaluate(([y,t])=>{const d=JSON.parse(localStorage.getItem('ptc-days'));for(const k of Object.keys(d)){if(d[k].date===t){d[k].date=y;d[k.replace(t,y)]=d[k];delete d[k]}}localStorage.setItem('ptc-days',JSON.stringify(d))},[key(1),key(0)]);
+  await pg.reload();await pg.waitForSelector('.hero');ok(await pg.locator('.check.carry').count()===0,'gone the day after it was done');
+  // skip
+  await setup(pg,key(1));await pg.reload();await pg.waitForSelector('.hero');await pg.click('[data-a=skipmiss]');await pg.waitForTimeout(400);await pg.reload();await pg.waitForSelector('.hero');
+  ok(await pg.locator('.check.carry').count()===0,'skip removes it');
+  // whole workout skipped: no carry-over, same workout again
+  await pg.evaluate(()=>localStorage.setItem('ptc-days','{}'));await pg.reload();await pg.waitForSelector('.hero');
+  ok(await pg.locator('.check.carry').count()===0&&(await T(pg,'.hero h2')).includes('Day 1'),'skipped whole day: same workout, nothing carried');
+  // not on rest days
+  await setup(pg,key(1));await pg.reload();await pg.waitForSelector('.hero');await pg.click('[data-a=reston]');
+  ok(await pg.locator('.check.carry').count()===0,'hidden on a rest day');
+  await pg.click('[data-a=restoff]');ok(await pg.locator('.check.carry').count()===1,'back after undoing rest');
+  ok(pg.errs.length===0,'no errors');await ctx.close()}
+
+ console.log('Reps go up after every 7 times');
+ {const{ctx,pg}=await fresh(b);
+  const seedN=n=>pg.evaluate(([n,keys])=>{const s=JSON.parse(localStorage.getItem('ptc-state'));const p=s.profiles[0];
+    p.daily.exercises=[{id:'cc',name:'Cat-cow',sets:1,reps:10,holdSec:0,restSec:0,side:'both',progress:true}];s.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(s));
+    const d={};for(let i=0;i<n;i++){const k=keys[i*3];d[p.id+'_'+k]={pid:p.id,date:k,dayTypeId:p.dayTypes[0].id,checked:{cc:true},reps:{},t:1}}
+    localStorage.setItem('ptc-days',JSON.stringify(d))},[n,Array.from({length:40},(_,i)=>key(i+1))]);
+  await seedN(6);await pg.reload();await pg.waitForSelector('.check');
+  let c=pg.locator('.check:has-text("Cat-cow")');ok((await c.locator('.dose').textContent())==='1 × 10','6 times (spread out): still 10 reps');
+  ok((await c.textContent()).includes('6 of 7 until +2'),'shows 6 of 7');
+  await seedN(7);await pg.reload();await pg.waitForSelector('.check');c=pg.locator('.check:has-text("Cat-cow")');
+  ok((await c.locator('.dose').textContent())==='1 × 12','7 times (not in a row): 12 reps');
+  await seedN(13);await pg.reload();await pg.waitForSelector('.check');c=pg.locator('.check:has-text("Cat-cow")');
+  ok((await c.locator('.dose').textContent())==='1 × 12','13 times: still 12');
+  await seedN(14);await pg.reload();await pg.waitForSelector('.check');c=pg.locator('.check:has-text("Cat-cow")');
+  ok((await c.locator('.dose').textContent())==='1 × 14','14 times: 14 reps');
+  await pg.click('.check:has-text("Cat-cow") [data-a=check]');ok((await pg.locator('.check:has-text("Cat-cow") .dose').textContent())==='1 × 14','ticking today does not jump reps mid-day');
+  await go(pg,'program');await pg.click('[data-a=ptab] >> nth=0');ok((await T(pg,'.ex')).includes('done 15 times'),'Program shows times done');
+  ok(pg.errs.length===0,'no errors');await ctx.close()}
+
  await b.close();console.log(`\n${pass} passed, ${fail} failed`);process.exit(fail?1:0);
 })().catch(e=>{console.error(e);process.exit(2)});
