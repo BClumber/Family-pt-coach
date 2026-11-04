@@ -160,6 +160,19 @@ video.vid{width:100%;max-width:100%;border-radius:12px;background:#000;max-heigh
 .wk .today{outline:2px solid var(--accent);outline-offset:1px}
 .wk .fut{opacity:.55}
 .wk .rst{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.wk button{font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:10px;padding:8px 2px;text-align:center;display:flex;flex-direction:column;gap:2px;font-size:12px;min-width:0;cursor:pointer}
+.wk button b{font-family:var(--mono);font-size:13px}
+.wk .full{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+.wk .part{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+.wk .plan{border-style:dashed;color:var(--muted)}
+.wk .sel{box-shadow:0 0 0 3px var(--accent)}
+.dlist{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.dlist li{display:grid;grid-template-columns:22px 1fr;column-gap:8px;align-items:baseline;font-size:15px}
+.dlist li .dose{grid-column:2;color:var(--muted)}
+.dlist li .mk{font-weight:700;color:var(--ok)}
+.dlist li.no{color:var(--muted)}
+.dlist li.no .mk{color:var(--line)}
+.dlist li .dose{font-size:13px}
 .pill.restday{background:var(--accent-soft);color:var(--accent)}
 .check{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
 .cb{width:44px;height:44px;border-radius:12px;border:2px solid var(--line);background:var(--bg);display:grid;place-items:center;padding:0;font-size:24px;font-weight:700;color:transparent}
@@ -329,10 +342,20 @@ function planFor(p,date){
   return p.dayTypes[(i<0?0:i+1)%p.dayTypes.length];
 }
 function ensureDoc(p,date,dt){const k=docKey(p,date);if(!DD[k])DD[k]={pid:p.id,date,dayTypeId:dt.id,checked:{},reps:{},pain:null,note:''};return DD[k]}
-function rotChecked(p,x){const dt=p.dayTypes[dtIndex(p,x.dayTypeId)];return!!(dt&&x.checked&&dt.exercises.some(e=>x.checked[e.id]))}
+function rotChecked(p,x){if(x.rest===true)return false;const dt=p.dayTypes[dtIndex(p,x.dayTypeId)];return!!(dt&&x.checked&&dt.exercises.some(e=>x.checked[e.id]))}
 function isRest(p,date){const d=docOf(p,date);if(d&&d.rest===true)return true;if(d&&d.rest===false)return false;return(p.restDays||[]).includes(parseKey(date).getDay())}
 function shownList(p,dt,date){return isRest(p,date)?(p.restKeepsDaily!==false?p.daily.exercises:[]):todayList(p,dt)}
 // Rest days keep the streak alive without adding to it.
+// What each coming day will be, keeping the rotation order and skipping rest days.
+function forecast(p,fromDate,days){
+  const out={},n=p.dayTypes.length;if(!n)return out;
+  let i=dtIndex(p,planFor(p,fromDate).id);if(i<0)i=0;
+  const d0=docOf(p,fromDate);
+  if(!isRest(p,fromDate)&&d0&&rotChecked(p,d0))i=(dtIndex(p,d0.dayTypeId)+1)%n; // today's done: tomorrow is the next one
+  else if(!isRest(p,fromDate))i=(i+1)%n; // today not done yet: assume it will be
+  for(let k=1;k<=days;k++){const day=addDays(fromDate,k);if(isRest(p,day)){out[day]='rest';continue}out[day]=p.dayTypes[i];i=(i+1)%n}
+  return out;
+}
 function streak(p){const set=new Set(Object.values(DD).filter(x=>x.pid===p.id&&anyChecked(x)).map(x=>x.date));let k=dayKey(),n=0,guard=0;
   if(!set.has(k))k=addDays(k,-1);
   while(guard++<730&&k>=p.startDate){if(set.has(k))n++;else if(!isRest(p,k))break;k=addDays(k,-1)}return n}
@@ -361,7 +384,7 @@ function vToday(){
   if(ST.exampleBanner)h+='<div class="banner"><p><b>Day 1 has example exercises.</b> Swap in your own list under Program, or load a ready-made plan there (like the lumbar pinched-nerve plan).</p><button class="btn sm ghost" data-a="dismiss">Got it</button></div>';
   if(rest){
     h+='<section class="card hero"><div class="row between"><span class="eyebrow">'+DAYS[new Date().getDay()]+' · Week '+wk+'</span><span class="pill restday">Rest day</span></div>';
-    h+='<h2>Rest day</h2><p class="small muted" style="margin:0">'+(exs.length?'Just your every-day exercises today. ':'Nothing to do today. ')+'Your streak stays, and the next workout picks up with '+dayLabel(p,dt)+' · '+esc(dt.name)+'.</p>';
+    h+='<h2>Rest day</h2><p class="small muted" style="margin:0">'+(exs.length?'Just your every-day exercises today. ':'Nothing to do today. ')+'Your streak stays. '+dayLabel(p,dt)+' · '+esc(dt.name)+' moves to your next workout day, so the order stays the same.</p>';
     if(exs.length)h+='<div class="prog"><i style="width:'+(done/exs.length*100)+'%"></i></div>';
     h+='<button class="btn" data-a="restoff">'+(scheduledRest&&!(d&&d.rest===true)?'Work out anyway':'Undo rest day')+'</button></section>';
   }else{
@@ -389,21 +412,51 @@ function vToday(){
   h+='<div class="stats"><div class="stat"><b>'+streak(p)+'</b><span>day streak</span></div><div class="stat"><b>'+wk+'</b><span>program week</span></div><div class="stat"><b>'+(p.reminder&&p.reminder.time?fmtTime(p.reminder.time):'–')+'</b><span>daily reminder</span></div></div>';
   return h;
 }
+let selDay=null;
+function dayInfo(p,k){
+  const d=docOf(p,k),dt=d&&p.dayTypes[dtIndex(p,d.dayTypeId)],rest=isRest(p,k);
+  const list=dt?(d.rest===true||rest?p.daily.exercises:[...p.daily.exercises,...dt.exercises]):p.daily.exercises;
+  const doneIds=d?Object.keys(d.checked||{}).filter(id=>d.checked[id]):[];
+  const known=new Set(list.map(e=>e.id));
+  const extra=doneIds.filter(id=>!known.has(id)).map(id=>{const all=[p.daily,...p.dayTypes].flatMap(l=>l.exercises).find(e=>e.id===id);return all||{id,name:(d.names&&d.names[id])||'Exercise (since removed)'}});
+  return{d,dt,rest,list:[...list,...extra],doneIds,n:doneIds.length,tot:list.length+extra.length};
+}
 function vWeek(){
-  const p=prof(),today=dayKey(),mon=mondayOf(today);
-  const cell=k=>{const d=docOf(p,k);const dt=d&&p.dayTypes[dtIndex(p,d.dayTypeId)];const tot=dt?dt.exercises.length+p.daily.exercises.length:0;const n=d?Object.values(d.checked||{}).filter(Boolean).length:0;
-    const r=isRest(p,k),rotN=dt?dt.exercises.filter(e=>d.checked&&d.checked[e.id]).length:0;
-    const cls=(r&&!rotN?'rst':n&&tot&&n>=tot?'full':n?'part':'')+(k===today?' today':'')+(k>today&&!r?' fut':'');
-    return'<div class="'+cls+'"><span>'+DAYS[parseKey(k).getDay()]+'</span><b>'+(r&&!rotN?'Rest':dt&&n?'D'+(dtIndex(p,dt.id)+1):k>today?'':'–')+'</b><span>'+(r&&!rotN?(n?n+' done':''):n?n+'/'+tot:k===today?'today':'')+'</span></div>'};
+  const p=prof(),today=dayKey(),mon=mondayOf(today),fc=forecast(p,today,7);
+  if(!selDay)selDay=today;
+  const cell=k=>{const I=dayInfo(p,k),fut=k>today,f=fc[k];
+    let cls='',top='',bot='';
+    if(fut){if(f==='rest'){cls='rst plan';top='Rest'}else if(f){cls='plan';top='D'+(dtIndex(p,f.id)+1);bot='next'}}
+    else if(I.rest&&!(I.d&&rotChecked(p,I.d))){cls='rst';top='Rest';bot=I.n?I.n+' done':''}
+    else{cls=I.n&&I.n>=I.tot?'full':I.n?'part':'';top=I.dt&&I.n?'D'+(dtIndex(p,I.dt.id)+1):'–';bot=I.n?I.n+'/'+I.tot:(k===today?'today':'')}
+    return'<button class="'+cls+(k===today?' today':'')+(k===selDay?' sel':'')+'" data-a="wkday" data-id="'+k+'" aria-pressed="'+(k===selDay)+'"><span>'+DAYS[parseKey(k).getDay()]+'</span><b>'+top+'</b><span>'+bot+'</span></button>'};
   let h='<h2 style="font-size:22px">Week '+weekNo(p,today)+'</h2>';
-  h+='<section class="card"><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(mon,i))).join('')+'</div><p class="small muted" style="margin:0">Green = every exercise checked. Amber = some. Blue = rest day. The next workout always picks up the day after your last one, so a missed day doesn’t skip a body area.</p></section>';
+  h+='<section class="card"><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(mon,i))).join('')+'</div><p class="small muted" style="margin:0">Tap a day to see what you did. Green = all done, amber = some, blue = rest, dashed = coming up. A rest day pushes the next workout to the following day, so the order never skips.</p></section>';
+  h+=dayDetail(p,selDay,today,fc);
   const wks=[];for(let w=1;w<=8;w++){const m=addDays(mon,-7*w);if(m<mondayOf(p.startDate))break;wks.push(m)}
   if(wks.length)h+='<section class="card"><span class="eyebrow">Earlier weeks</span>'+wks.map(m=>'<div><div class="small muted" style="margin-bottom:4px">Week '+weekNo(p,m)+' · '+(parseKey(m).getMonth()+1)+'/'+parseKey(m).getDate()+'</div><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(m,i))).join('')+'</div></div>').join('')+'</section>';
+  const recent=Object.values(DD).filter(x=>x.pid===p.id&&x.date<=today&&Object.values(x.checked||{}).some(Boolean)).sort((a,b)=>a.date<b.date?1:-1).slice(0,30);
+  h+='<section class="card"><span class="eyebrow">History</span>'+(recent.length?'<div class="hist">'+recent.map(x=>{const I=dayInfo(p,x.date),names=I.list.filter(e=>I.doneIds.includes(e.id)).map(e=>e.name);
+    return'<div data-a="wkday" data-id="'+x.date+'" style="cursor:pointer"><span class="d">'+DAYS[parseKey(x.date).getDay()]+' '+(parseKey(x.date).getMonth()+1)+'/'+parseKey(x.date).getDate()+'</span><span class="n"><b>'+(I.rest&&!rotChecked(p,x)?'Rest day':I.dt?esc(I.dt.name):'Workout')+'</b> · '+I.n+' of '+I.tot+' done<br><span class="muted">'+esc(names.join(', '))+'</span>'+(x.note?'<br><span class="muted">“'+esc(x.note)+'”</span>':'')+'</span><span class="pain">'+(x.pain!=null?x.pain+'/10':'')+'</span></div>'}).join('')+'</div>':'<p class="small muted" style="margin:0">Nothing checked off yet. Every exercise you tick shows up here, even if you don’t finish the day.</p>')+'</section>';
   const pains=Object.values(DD).filter(x=>x.pid===p.id&&x.pain!=null).sort((a,b)=>a.date<b.date?-1:1).slice(-20);
   h+='<section class="card"><span class="eyebrow">Pain after workouts (0–10)</span>'+chart(pains)+'</section>';
-  const notes=Object.values(DD).filter(x=>x.pid===p.id&&x.note).sort((a,b)=>a.date<b.date?1:-1).slice(0,15);
-  if(notes.length)h+='<section class="card"><span class="eyebrow">Notes</span><div class="hist">'+notes.map(x=>{const dt=p.dayTypes[dtIndex(p,x.dayTypeId)];return'<div><span class="d">'+(parseKey(x.date).getMonth()+1)+'/'+parseKey(x.date).getDate()+'</span><span class="n">'+(dt?esc(dt.name)+' · ':'')+esc(x.note)+'</span><span class="pain">'+(x.pain!=null?x.pain+'/10':'')+'</span></div>'}).join('')+'</div></section>';
   return h;
+}
+function dayDetail(p,k,today,fc){
+  const dd=parseKey(k),label=DAYS[dd.getDay()]+' '+(dd.getMonth()+1)+'/'+dd.getDate()+(k===today?' · today':'');
+  let h='<section class="card" id="daydetail"><span class="eyebrow">'+label+'</span>';
+  if(k>today){const f=fc[k];
+    if(f==='rest')h+='<h3 style="font-size:18px;margin:0">Rest day</h3>'+(p.restKeepsDaily!==false&&p.daily.exercises.length?'<p class="small muted" style="margin:0">Every-day exercises only.</p>':'');
+    else if(f)h+='<h3 style="font-size:18px;margin:0">Coming up: '+dayLabel(p,f)+' · '+esc(f.name)+'</h3><ul class="dlist">'+[...p.daily.exercises,...f.exercises].map(e=>'<li class="no"><span class="mk">○</span><span>'+esc(e.name)+'</span><span class="dose">'+esc(doseText(e,repsFor(p,e,k)))+'</span></li>').join('')+'</ul>';
+    return h+'</section>'}
+  const I=dayInfo(p,k);
+  const title=I.rest&&!(I.d&&rotChecked(p,I.d))?'Rest day':I.dt?dayLabel(p,I.dt)+' · '+esc(I.dt.name):'No workout logged';
+  h+='<div class="row between"><h3 style="font-size:18px;margin:0">'+title+'</h3>'+(I.tot?'<span class="pill '+(I.n>=I.tot?'done':I.n?'due':'rest')+'">'+I.n+' of '+I.tot+' done</span>':'')+'</div>';
+  if(I.list.length&&(I.d||k===today))h+='<ul class="dlist">'+I.list.map(e=>{const on=I.doneIds.includes(e.id),r=(I.d&&I.d.reps&&I.d.reps[e.id])||repsFor(p,e,k);return'<li class="'+(on?'':'no')+'"><span class="mk">'+(on?'✓':'○')+'</span><span>'+esc(e.name)+'</span><span class="dose">'+(e.sets?esc(doseText(e,r)):'')+'</span></li>'}).join('')+'</ul>';
+  else h+='<p class="small muted" style="margin:0">Nothing checked off this day.</p>';
+  if(I.d&&I.d.pain!=null)h+='<p class="small" style="margin:0">Pain after: <b>'+I.d.pain+'/10</b></p>';
+  if(I.d&&I.d.note)h+='<p class="small muted" style="margin:0">“'+esc(I.d.note)+'”</p>';
+  return h+'</section>';
 }
 function chart(pts){
   if(pts.length<2)return'<p class="muted small" style="margin:0">Rate two finished workouts to see a trend.</p>';
@@ -470,7 +523,7 @@ function renderDyn(){
 /* ---------- check-off ---------- */
 function setCheck(exId,val,reps){
   const p=prof(),today=dayKey(),dt=planFor(p,today),d=ensureDoc(p,today,dt);
-  d.checked={...d.checked,[exId]:!!val};d.reps={...(d.reps||{})};
+  d.checked={...d.checked,[exId]:!!val};d.reps={...(d.reps||{})};{const ex=todayList(p,dt).find(e=>e.id===exId);if(ex)d.names={...(d.names||{}),[exId]:ex.name}}
   if(val)d.reps[exId]=reps;else delete d.reps[exId];
   if(val&&shownList(p,dt,today).every(e=>d.checked[e.id]))beep(1040,.3);
   saveDay(docKey(p,today));
@@ -558,7 +611,7 @@ document.addEventListener('click',e=>{
   const curDt=()=>getList(p,progTab)||p.dayTypes[0];
   switch(a){
     case'nav':view=id;if(MD&&MD.delDay)MD=null;render();window.scrollTo(0,0);break;
-    case'prof':ST.activeId=id;progTab=null;openVid.clear();save();render();break;
+    case'prof':selDay=null;ST.activeId=id;progTab=null;openVid.clear();save();render();break;
     case'dismiss':ST.exampleBanner=false;save();render();break;
     case'goprog':progTab=id;view='program';render();break;
     case'setday':{const dt=p.dayTypes[dtIndex(p,id)],d=docOf(p,today);if(!dt)break;if(d){if(d.dayTypeId===id)break;d.dayTypeId=id;d.checked={};d.reps={};d.pain=null}else ensureDoc(p,today,dt);saveDay(docKey(p,today));render();break}
@@ -567,8 +620,10 @@ document.addEventListener('click',e=>{
     case'timer':startTimer(id);break;
     case'pain':{const d=docOf(p,today);if(!d)break;d.pain=+id;d.note=($('t-note')||{}).value||d.note;saveDay(docKey(p,today));render();break}
     case'ptab':progTab=id;MD=null;render();break;
-    case'reston':{const d=ensureDoc(p,today,planFor(p,today));d.rest=true;saveDay(docKey(p,today));render();window.scrollTo(0,0);break}
+    case'reston':{const pl=planFor(p,today),d=ensureDoc(p,today,pl);d.rest=true;
+      const cur=p.dayTypes[dtIndex(p,d.dayTypeId)];if(cur){d.checked={...d.checked};for(const e of cur.exercises)delete d.checked[e.id]}saveDay(docKey(p,today));render();window.scrollTo(0,0);break}
     case'restoff':{const d=ensureDoc(p,today,planFor(p,today));d.rest=(p.restDays||[]).includes(new Date().getDay())?false:null;saveDay(docKey(p,today));render();break}
+    case'wkday':selDay=id;render();{const el=$('daydetail');el&&el.scrollIntoView({block:'nearest',behavior:'smooth'})}break;
     case'presets':MD={kind:'preset'};openModal(presetList());break;
     case'presetpick':MD={kind:'preset',key:id};openModal(presetForm());break;
     case'presetload':{const k=MD.key;loadPreset(p,k);ST.exampleBanner=false;progTab=k==='yti'?p.dayTypes[2].id:DAILY;save();closeModal();view=k==='yti'?'program':'today';render();window.scrollTo(0,0);setSync('Plan loaded');break}
