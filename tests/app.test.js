@@ -2,9 +2,8 @@
 // Run: FAMILY_CODE=4321 PORT=3999 node server.js &  then  node tests/app.test.js
 const {chromium}=require('playwright');const fs=require('fs');const os=require('os');const path=require('path');
 const BASE='http://localhost:3999';
-const MON='2026-11-09T09:00:00';           // a Monday; tests move the phone's clock around this week
+const MON='2026-11-09T09:00:00';           // a Monday; tests move the phone's clock forward through this week
 const at=(iso)=>new Date(iso).getTime();
-const k=(iso)=>iso.slice(0,10);
 let pass=0,fail=0;const ok=(c,m)=>{if(c){pass++;console.log('  ✓',m)}else{fail++;console.log('  ✗ FAIL:',m)}};
 async function open(b,{when=MON,seed}={}){const ctx=await b.newContext({viewport:{width:390,height:844}});const pg=await ctx.newPage();
   await pg.clock.install({time:at(when)});await pg.route(/fonts\.g/,r=>r.abort());pg.errs=[];pg.on('pageerror',e=>pg.errs.push(e.message));
@@ -14,17 +13,37 @@ async function open(b,{when=MON,seed}={}){const ctx=await b.newContext({viewport
 async function setDay(pg,when){await pg.clock.setSystemTime(at(when));await pg.reload();await pg.waitForSelector('#main .card')}
 const T=(pg,s)=>pg.textContent(s);const go=(pg,v)=>pg.click(`[data-a=nav][data-id=${v}]`);
 const stored=async pg=>{await pg.waitForTimeout(600);return pg.evaluate(()=>({st:JSON.parse(localStorage.getItem('ptc-state')),dd:JSON.parse(localStorage.getItem('ptc-days')||'{}')}))};
-const names=async pg=>pg.locator('#main .check h3').allTextContents();
+const names=async pg=>pg.locator('#main .check:not(.carry) h3').allTextContents();
+const carried=async pg=>pg.locator('#main .check.carry h3').allTextContents();
 const card=(pg,n)=>pg.locator(`#main .check:has(h3:text-is("${n}"))`);
-const tick=async(pg,n)=>{await card(pg,n).locator('[data-a=check]').click();await pg.waitForTimeout(450)};
+const tick=async(pg,n)=>{await card(pg,n).first().locator('[data-a=check]').click();await pg.waitForTimeout(450)};
 const loadPlan=async(pg,key)=>{await go(pg,'program');await pg.click('[data-a=presets]');await pg.click(`[data-a=presetpick][data-id=${key}]`);await pg.click('[data-a=presetload]');await pg.waitForTimeout(450)};
-// Old (before the weekly schedule) saved data, shaped like a phone that loaded both plans and ticked some exercises
+const STR=['legs','upper','core','other'];
+function checkWeek(p){const per={},bad=[];for(const d of [0,1,2,3,4,5,6])for(const id of (p.week[d]||[]))(per[id]=per[id]||[]).push(d);
+  for(const d of [0,1,2,3,4,5,6]){const n=(d+1)%7;const g=new Set((p.week[d]||[]).map(id=>p.lib.find(e=>e.id===id).group).filter(x=>STR.includes(x)));
+    for(const id of (p.week[n]||[])){const e=p.lib.find(x=>x.id===id);if(g.has(e.group))bad.push(e.name+' '+d+'->'+n)}}
+  const adjEx=Object.entries(per).filter(([,ds])=>ds.some(a=>ds.includes((a+1)%7)));
+  return{per,bad,adjEx}}
+// A fixed program so tests know exactly what's on each day
+const CUSTOM={fn:()=>{const s=JSON.parse(localStorage.getItem('ptc-state'));const p=s.profiles[0];
+  const ex=(id,name,group,extra)=>({id,name,group,sets:2,reps:10,holdSec:0,restSec:30,side:'both',band:'',notes:'',demo:'',videoId:'',videoUrl:'',videoLink:'',progress:group!=='stretch',...extra});
+  p.lib=[ex('gb','Glute bridge','legs'),ex('sq','Chair squat','legs'),ex('db','Dead bug','core'),ex('bd','Bird dog','core'),ex('yr','Prone Y raise','upper'),ex('fs','Figure-4 stretch','stretch',{reps:1,holdSec:30})];
+  p.week={1:['gb','db','fs'],2:['yr'],3:['sq','bd','gb'],4:['yr'],5:['gb','db','fs'],6:[],0:[]};p.trainDays=[1,2,3,4,5];p.auto=false;s.exampleBanner=false;s.t=Date.now();
+  localStorage.setItem('ptc-state',JSON.stringify(s));localStorage.setItem('ptc-days','{}')}};
+// Saved data from before the weekly schedule (rotation + every-day list)
 const V2={fn:([days])=>{const ex=(id,name,extra)=>({id,name,sets:2,reps:10,holdSec:0,restSec:30,side:'both',progress:false,...extra});
   const st={v:2,activeId:'me',exampleBanner:false,profiles:[{id:'me',name:'Dovi',hue:0,startDate:'2026-10-26',increment:2,reminder:{time:'07:30'},restDays:[0],
     daily:{id:'daily',exercises:[ex('cc','Cat-cow',{demo:'cat-cow'}),ex('pp','Prone press-up',{demo:'prone-press-up'}),ex('pt','Pelvic tilt',{demo:'pelvic-tilt'}),ex('ng','Sciatic nerve glide',{demo:'nerve-glide'}),ex('hf','Hip flexor stretch',{holdSec:30}),ex('wk','Walk',{unit:'min'})]},
     dayTypes:[{id:'d1',name:'Legs & hips',exercises:[ex('sq','Wall squat',{progress:true})]},{id:'d2',name:'Spine & abs',exercises:[ex('gb','Glute bridge'),ex('db','Dead bug')]},{id:'d3',name:'Arms',exercises:[ex('py','Prone Y raise',{progress:true})]}]}]};
   localStorage.setItem('ptc-state',JSON.stringify(st));localStorage.setItem('ptc-days',JSON.stringify(days))},
  arg:[{'me_2026-11-03':{pid:'me',date:'2026-11-03',dayTypeId:'d1',checked:{sq:true,cc:true,pp:true},reps:{sq:12},pain:3,note:'old note'}}]};
+// The 4-day version that was on the phone before the 5-day update (with child's pose)
+const V3_4DAY={fn:()=>{const ex=(id,name,group,extra)=>({id,name,group,sets:2,reps:10,holdSec:0,restSec:30,side:'both',band:'',notes:'',demo:'',videoId:'',videoUrl:'',videoLink:'',progress:group!=='stretch',...extra});
+  const lib=[ex('gb','Glute bridge','legs'),ex('db','Dead bug','core'),ex('bd','Bird dog','core'),ex('sp','Side plank (from knees)','core'),ex('cc','Cat-cow','stretch'),ex('f4','Figure-4 stretch','stretch'),ex('hf','Hip flexor stretch','stretch'),ex('hs','Hamstring stretch (strap)','stretch'),ex('ch',"Child's pose",'stretch'),ex('wk','Walk','cardio',{unit:'min'}),ex('y','Prone Y raise','upper'),ex('t','Prone T raise','upper'),ex('i','Prone I raise','upper')];
+  const st={v:3,activeId:'me',exampleBanner:false,v3note:true,profiles:[{v:3,id:'me',name:'Dovi',hue:0,startDate:'2026-11-09',since:'2026-11-08',increment:2,reminder:{time:'07:30'},trainDays:[1,2,4,5],lib,auto:true,legacy:{names:{}},migratedV3:true,
+    week:{1:['gb','db','bd','sp','f4','hf','hs'],2:['y','t','i','wk','cc','ch'],3:[],4:['gb','db','bd','sp','f4','hf','hs'],5:['y','t','i','wk','cc','ch'],6:[],0:[]}},
+    {v:3,id:'mom',name:'Mom',hue:1,startDate:'2026-11-09',since:'2026-11-08',increment:2,trainDays:[1,2,4,5],lib:[ex('cl','Clamshell','legs')],auto:true,legacy:{names:{}},week:{1:['cl'],4:['cl']}}]};
+  localStorage.setItem('ptc-state',JSON.stringify(st));localStorage.setItem('ptc-days',JSON.stringify({'me_2026-11-08':{pid:'me',date:'2026-11-08',checked:{ch:true,gb:true},reps:{},names:{ch:"Child's pose"},plan:['gb','ch'],t:1}}))}};
 
 (async()=>{
  const b=await chromium.launch();
@@ -32,13 +51,33 @@ const V2={fn:([days])=>{const ex=(id,name,extra)=>({id,name,sets:2,reps:10,holdS
  {const r=await fetch(BASE+'/',{redirect:'manual'});ok(r.status===303,'locked without passcode');
   const r2=await fetch(BASE+'/login',{method:'POST',body:'code=0000',headers:{'content-type':'application/x-www-form-urlencoded'}});ok(r2.status===401,'wrong passcode refused');}
 
- console.log('Fresh phone, weekly schedule');
+ console.log('Fresh phone, 5-day schedule');
  {const{ctx,pg}=await open(b);
   ok((await T(pg,'.hero h2')).includes('Legs & hips'),'Monday is a legs day');
-  ok((await names(pg)).includes('Glute bridge'),'legs exercises on Monday');
   await tick(pg,'Glute bridge');await pg.reload();await pg.waitForSelector('.check');ok(await card(pg,'Glute bridge').locator('.cb[aria-pressed=true]').count()===1,'check-off survives reload');
-  await setDay(pg,'2026-11-11T09:00:00');ok(await pg.locator('#main .check:not(.carry)').count()===0,'Wednesday is a rest day (only carried-over exercises)');
-  await go(pg,'program');const tabs=(await pg.locator('[data-a=ptab]').allTextContents()).join('|');ok(/Mon.*Legs/.test(tabs)&&/Wed.*Rest/.test(tabs)&&/Sat.*Rest/.test(tabs),'program shows Mon–Sun schedule');
+  await setDay(pg,'2026-11-14T09:00:00');ok((await names(pg)).length===0,'Saturday is a rest day');
+  await go(pg,'program');const tabs=(await pg.locator('[data-a=ptab]').allTextContents()).join('|');ok(/Mon.*Legs/.test(tabs)&&/Sat.*Rest/.test(tabs)&&/Sun.*Rest/.test(tabs),'program shows Mon–Fri workouts, weekend rest');
+  ok(pg.errs.length===0,'no errors');await ctx.close()}
+
+ console.log('Schedule rules (all plans loaded)');
+ {const{ctx,pg}=await open(b);for(const k of ['lumbar','basics','yti'])await loadPlan(pg,k);
+  const p=(await stored(pg)).st.profiles[0];const c=checkWeek(p);
+  ok(Object.values(c.per).every(ds=>ds.length===2),'every exercise twice a week');
+  ok(c.adjEx.length===0,'no exercise on two days in a row');ok(c.bad.length===0,'no muscle group two days in a row '+c.bad.join(','));
+  const sizes=[1,2,3,4,5].map(d=>(p.week[d]||[]).length);ok(Math.max(...sizes)-Math.min(...sizes)<=1,'days evenly loaded: '+sizes.join(','));
+  ok(!(p.week[6]||[]).length&&!(p.week[0]||[]).length,'weekend free');
+  ok(!p.lib.some(e=>/child/i.test(e.name)),'low-back plan no longer has child’s pose');
+  ok(pg.errs.length===0,'no errors');await ctx.close()}
+
+ console.log('Update on a phone that had the 4-day week');
+ {const{ctx,pg}=await open(b,{seed:V3_4DAY});const s=await stored(pg);const p=s.st.profiles[0],mom=s.st.profiles[1];
+  ok(!p.lib.some(e=>/child/i.test(e.name)),'child’s pose removed');
+  ok(['Chair squat','Band row','Counter push-up'].every(n=>p.lib.some(e=>e.name===n)),'chair squat, band row, counter push-up added');
+  ok(p.trainDays.join()==='1,2,3,4,5','now Mon–Fri');const c=checkWeek(p);ok(c.bad.length===0&&c.adjEx.length===0&&Object.values(c.per).every(d=>d.length===2),'rules hold after update');
+  ok(mom.trainDays.join()==='1,2,4,5'&&mom.lib.length===1,'other people left alone');
+  ok((await T(pg,'#main')).includes('Your week is now 5 days'),'explains the change');
+  await go(pg,'week');ok((await T(pg,'.hist')).includes('Child'),'old history with child’s pose still shown');
+  await pg.reload();await pg.waitForSelector('.card');const s2=await stored(pg);ok(s2.st.profiles[0].lib.length===p.lib.length,'update runs only once');
   ok(pg.errs.length===0,'no errors');await ctx.close()}
 
  console.log('Old saved data moves over');
@@ -46,10 +85,9 @@ const V2={fn:([days])=>{const ex=(id,name,extra)=>({id,name,sets:2,reps:10,holdS
   ok(s.st.v===3,'converted to the weekly schedule');
   const lib=p.lib.map(e=>e.name);ok(!lib.some(n=>/press-up|Pelvic|nerve/i.test(n)),'press-up, pelvic tilt and nerve glide removed');
   ok(['Cat-cow','Hip flexor stretch','Walk','Wall squat','Glute bridge','Dead bug','Prone Y raise'].every(n=>lib.includes(n)),'all other exercises kept');
-  ok(p.lib.find(e=>e.name==='Glute bridge').progress===true&&p.lib.find(e=>e.name==='Hip flexor stretch').progress===false,'strength goes up weekly, stretches stay');
-  const day=n=>(p.week[n]||[]).map(id=>p.lib.find(e=>e.id===id).name);
-  ok(day(1).includes('Wall squat')&&day(1).includes('Dead bug')&&day(2).includes('Prone Y raise')&&!day(3).length,'legs+core Mon, upper Tue, rest Wed');
+  const c=checkWeek(p);ok(c.bad.length===0,'no muscle group two days in a row');
   ok(await pg.evaluate(()=>!!localStorage.getItem('ptc-state-before-v3')),'old program kept as a safety copy');
+  await go(pg,'week');await pg.click('[data-a=wkprev]');await pg.waitForTimeout(200);
   await go(pg,'week');ok((await T(pg,'.hist')).includes('Wall squat')&&(await T(pg,'.hist')).includes('old note'),'old history still shown');
   ok(pg.errs.length===0,'no errors');await ctx.close()}
 
@@ -58,50 +96,56 @@ const V2={fn:([days])=>{const ex=(id,name,extra)=>({id,name,sets:2,reps:10,holdS
   ok((await T(pg,'#chips')).includes('Mom')&&(await names(pg)).includes('Clamshell'),'person and exercise kept, on a legs day');ok(pg.errs.length===0,'no errors');await ctx.close()}
 
  console.log('Reps go up 2 every week');
- {const{ctx,pg}=await open(b);await loadPlan(pg,'lumbar');await go(pg,'today');
-  const dose=n=>card(pg,n).locator('.dose').textContent();
-  ok((await dose('Glute bridge'))==='2 × 10 · 3 s hold','week 1: 10 reps');
-  await setDay(pg,'2026-11-16T09:00:00');ok((await dose('Glute bridge'))==='2 × 12 · 3 s hold','week 2: 12 reps');
-  await setDay(pg,'2026-11-23T09:00:00');ok((await dose('Glute bridge'))==='2 × 14 · 3 s hold','week 3: 14 reps');
+ {const{ctx,pg}=await open(b,{seed:CUSTOM});const dose=n=>card(pg,n).locator('.dose').textContent();
+  ok((await dose('Glute bridge'))==='2 × 10','week 1: 10 reps');
+  await setDay(pg,'2026-11-16T09:00:00');ok((await dose('Glute bridge'))==='2 × 12','week 2: 12 reps');
+  await setDay(pg,'2026-11-23T09:00:00');ok((await dose('Glute bridge'))==='2 × 14','week 3: 14 reps');
   ok((await dose('Figure-4 stretch')).startsWith('2 × 1 '),'stretch stays the same');
   ok(pg.errs.length===0,'no errors');await ctx.close()}
 
  console.log('Sore? Move it');
- {const{ctx,pg}=await open(b);await loadPlan(pg,'lumbar');await go(pg,'today');
+ {const{ctx,pg}=await open(b,{seed:CUSTOM});
   await card(pg,'Dead bug').locator('[data-a=sore]').click();
-  const rec=await pg.locator('[data-a=moveto]:has(.pill.done)').getAttribute('data-id');ok(rec==='2026-11-11','recommends Wednesday (Tue follows a core day)');
-  ok((await pg.locator('[data-a=moveto][data-id="2026-11-10"]').textContent()).includes('day before'),'warns about the day after a core day');
-  await pg.click('[data-a=moveto][data-id="2026-11-11"]');ok(!(await names(pg)).includes('Dead bug'),'gone from today');
-  await setDay(pg,'2026-11-11T09:00:00');ok((await names(pg)).includes('Dead bug')&&(await T(pg,'.pill.moved')).includes('Mon'),'shows up Wednesday marked moved');
-  await tick(pg,'Dead bug');await setDay(pg,'2026-11-12T09:00:00');ok(!(await pg.locator('.check.carry').count()),'done: nothing carried');
-  // skip
-  await card(pg,'Bird dog').locator('[data-a=sore]').click();await pg.click('[data-a=moveskip]');ok(!(await names(pg)).includes('Bird dog'),'skip it this week');
-  await setDay(pg,'2026-11-13T09:00:00');ok(!(await names(pg)).includes('Bird dog'),'skipped one is not carried over');
+  ok((await pg.locator('[data-a=moveto][data-id="2026-11-10"]').textContent()).includes('Too soon'),'Tue: tomorrow is too soon for a sore muscle');
+  ok((await pg.locator('[data-a=moveto][data-id="2026-11-11"]').textContent()).includes('already that day'),'Wed: warns core already that day');
+  ok((await pg.locator('[data-a=moveto][data-id="2026-11-13"]').textContent()).includes('Already that day'),'Fri: already has Dead bug');
+  ok((await pg.locator('[data-a=moveto][data-id="2026-11-14"]').textContent()).includes('day before'),'Sat: warns core was worked Friday');
+  const rec=await pg.locator('[data-a=moveto]:has(.pill.done)').getAttribute('data-id');ok(rec==='2026-11-15','recommends Sunday (first fully rested day)');
+  await pg.click('[data-a=moveto][data-id="2026-11-14"]');ok(!(await names(pg)).includes('Dead bug'),'gone from Monday');
+  await setDay(pg,'2026-11-14T09:00:00');ok((await names(pg)).includes('Dead bug')&&(await T(pg,'.pill.moved')).includes('Mon'),'shows up Saturday marked moved');
+  await setDay(pg,'2026-11-16T09:00:00');await card(pg,'Glute bridge').locator('[data-a=sore]').click();await pg.click('[data-a=moveskip]');ok(!(await names(pg)).includes('Glute bridge'),'skip it this week');
+  await tick(pg,'Dead bug');await setDay(pg,'2026-11-17T09:00:00');ok(!(await carried(pg)).includes('Glute bridge'),'skipped one is not carried over');
   ok(pg.errs.length===0,'no errors');await ctx.close()}
 
  console.log('Take today off');
- {const{ctx,pg}=await open(b);const before=(await names(pg)).length;
-  await pg.click('[data-a=offday]');ok((await T(pg,'.hero h2'))==='Day off'&&(await T(pg,'.hero')).includes('Wed'),'Monday off, moved to Wednesday (a rest day)');
-  await setDay(pg,'2026-11-11T09:00:00');ok((await names(pg)).length===before,'Wednesday has Monday’s workout');
+ {const{ctx,pg}=await open(b,{seed:CUSTOM});const before=(await names(pg)).length;
+  await pg.click('[data-a=offday]');ok((await T(pg,'.hero h2'))==='Day off'&&(await T(pg,'.hero')).includes('Sat'),'Monday off, moved to Saturday (a rest day)');
+  await setDay(pg,'2026-11-14T09:00:00');ok((await names(pg)).length===before,'Saturday has Monday’s workout');
   await setDay(pg,'2026-11-09T12:00:00');await pg.click('[data-a=offundo]');ok((await names(pg)).length===before,'undo brings it back');
-  await setDay(pg,'2026-11-11T12:00:00');ok((await T(pg,'.hero h2'))==='Rest day','Wednesday back to rest');
+  await setDay(pg,'2026-11-14T12:00:00');ok((await names(pg)).length===0,'Saturday back to rest');
   ok(pg.errs.length===0,'no errors');await ctx.close()}
 
  console.log('Missed exercises carry over, after the muscle has rested');
- {const{ctx,pg}=await open(b);await loadPlan(pg,'lumbar');await go(pg,'today');
-  await tick(pg,'Glute bridge');  // did part of Monday: legs worked, core skipped
-  await setDay(pg,'2026-11-10T09:00:00');const carried=await pg.locator('.check.carry h3').allTextContents();
-  ok(carried.includes('Dead bug')&&carried.includes('Figure-4 stretch'),'core and stretches carry to Tuesday');
+ {const{ctx,pg}=await open(b,{seed:CUSTOM});await tick(pg,'Glute bridge');
+  await setDay(pg,'2026-11-10T09:00:00');const c=await carried(pg);ok(c.includes('Dead bug')&&c.includes('Figure-4 stretch'),'core and stretch carry to Tuesday');
   ok((await T(pg,'.check.carry .pill.missed'))==='Missed yesterday','marked Missed yesterday');
   await pg.click('.check.carry:has(h3:text-is("Dead bug")) [data-a=check]');await pg.waitForTimeout(400);
-  await setDay(pg,'2026-11-11T09:00:00');const c2=await pg.locator('.check.carry h3').allTextContents();ok(!c2.includes('Dead bug')&&c2.includes('Figure-4 stretch'),'done one gone, others keep carrying');
-  ok(!c2.includes('Bird dog'),'core waits a day after core was done');
+  await setDay(pg,'2026-11-11T09:00:00');const c2=await carried(pg);ok(!c2.includes('Dead bug')&&c2.includes('Figure-4 stretch'),'done one gone, other keeps carrying');
   ok((await T(pg,'.check.carry .pill.missed')).startsWith('Missed Mon'),'label shows when it was missed');
-  await setDay(pg,'2026-11-12T09:00:00');ok((await names(pg)).includes('Bird dog'),'Bird dog back on its own day (Thursday)');
+  // Wednesday: did the squat (legs) but skipped Glute bridge (legs) and Bird dog (core)
+  await tick(pg,'Chair squat');await setDay(pg,'2026-11-12T09:00:00');const c3=await carried(pg);
+  ok(!c3.includes('Glute bridge')&&c3.includes('Bird dog'),'legs miss waits after a legs day; core shows');
+  await setDay(pg,'2026-11-14T09:00:00');ok((await carried(pg)).includes('Glute bridge'),'legs one shows once the legs have rested');
   ok(pg.errs.length===0,'no errors');await ctx.close()}
- {const{ctx,pg}=await open(b);await tick(pg,'Clamshell');  // legs only, legs missed too
-  await setDay(pg,'2026-11-10T09:00:00');ok(!(await pg.locator('.check.carry h3').allTextContents()).includes('Heel slide'),'missed legs exercise waits a day after a legs day');
-  await setDay(pg,'2026-11-11T09:00:00');ok((await pg.locator('.check.carry h3').allTextContents()).includes('Heel slide'),'shows up after the rest day');
+
+ console.log('Looking ahead');
+ {const{ctx,pg}=await open(b,{seed:CUSTOM});const rows=await pg.locator('[data-a=peek] .n').allTextContents();
+  ok(rows.length===4&&rows[0].includes('Prone Y raise')&&rows[1].includes('Chair squat'),'Today shows the next 4 days with their exercises');
+  await pg.click('[data-a=peek][data-id="2026-11-11"]');ok((await T(pg,'#daydetail')).includes('Coming up')&&(await T(pg,'#daydetail')).includes('Bird dog'),'tapping opens that day’s full list');
+  await pg.click('[data-a=wknext]');ok((await T(pg,'#main h2')).includes('Next week'),'next week');
+  ok((await T(pg,'#daydetail')).includes('Mon 11/16')&&(await T(pg,'#daydetail')).includes('2 × 12'),'next Monday with next week’s reps');
+  await pg.click('[data-a=wknext]');await pg.click('.wk button >> nth=2');ok((await T(pg,'#daydetail')).includes('Wed 11/25')&&(await T(pg,'#daydetail')).includes('2 × 14'),'two weeks out, any day');
+  await pg.click('[data-a=wkthis]');ok((await T(pg,'#main h2')).includes('This week'),'back to this week');
   ok(pg.errs.length===0,'no errors');await ctx.close()}
 
  console.log('Edit a past day');
@@ -112,13 +156,13 @@ const V2={fn:([days])=>{const ex=(id,name,extra)=>({id,name,sets:2,reps:10,holdS
 
  console.log('Changing the schedule');
  {const{ctx,pg}=await open(b);await go(pg,'program');
-  await pg.click('label:has(#td4)');await pg.waitForTimeout(300);let s=await stored(pg);let p=s.st.profiles[0];
-  ok(!(p.week[4]||[]).length&&(p.week[5]||[]).length,'turning off Thursday rebuilds the week');
+  await pg.click('label:has(#td4)');let s=await stored(pg);let p=s.st.profiles[0];
+  ok(!(p.week[4]||[]).length&&checkWeek(p).bad.length===0,'turning off Thursday rebuilds the week');
   await pg.click('label:has(#td4)');await pg.click('[data-a=ptab][data-id="2"]');await pg.click('[data-a=dayadd]');await pg.click('[data-a=pick]:has-text("Clamshell")');
   ok((await T(pg,'#main')).includes('back to back'),'warns when legs land on back-to-back days');
   await pg.click('[data-a=ptab][data-id=all]');await pg.click('[data-a=exadd]');await pg.fill('#f-name','Bicep curl');await pg.click('[data-a=exsave]');
-  s=await stored(pg);p=s.st.profiles[0];const bc=p.lib.find(e=>e.name==='Bicep curl');ok(bc&&bc.group==='upper'&&(p.week[2]||[]).includes(bc.id),'new exercise guessed as upper and placed on upper days');
-  await pg.click('[data-a=rebuild]');s=await stored(pg);ok(s.st.profiles[0].auto===true&&!(s.st.profiles[0].week[2]||[]).includes(s.st.profiles[0].lib.find(e=>e.name==='Clamshell').id),'rebuild puts things back');
+  s=await stored(pg);p=s.st.profiles[0];const bc=p.lib.find(e=>e.name==='Bicep curl');ok(bc&&bc.group==='upper'&&(p.week[2]||[]).includes(bc.id),'new exercise guessed as upper and placed on an upper day');
+  await pg.click('[data-a=rebuild]');s=await stored(pg);p=s.st.profiles[0];ok(p.auto===true&&checkWeek(p).bad.length===0,'rebuild restores the rules');
   ok(pg.errs.length===0,'no errors');await ctx.close()}
 
  console.log('Timer and exercise editing');

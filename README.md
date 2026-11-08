@@ -2,7 +2,7 @@
 
 Weekly physical-therapy schedule for the family.
 
-- **Weekly schedule** on the workout days you pick (default Mon, Tue, Thu, Fri). Days alternate: legs, hips & core + lower-body stretches, then shoulders & arms + back stretches + walking, so each muscle group gets at least a day off between sessions. "Rebuild my week" re-does the layout; you can also place exercises by hand (the app warns about back-to-back days for the same muscles).
+- **Weekly schedule** on the workout days you pick (default Mon–Fri). Days alternate legs & core with shoulders & arms, so no muscle group is worked two days in a row; each exercise is done twice a week on non-consecutive days, spread so days stay short. Today shows the next 4 days; the Week tab browses any future week. "Rebuild my week" re-does the layout; you can also place exercises by hand (the app warns about back-to-back days for the same muscles).
 - **Reps go up 2 every week** (per-person setting); stretches stay the same.
 - **Sore? Move it** on any exercise moves it to the best later day (no same muscle group that day or the day before) or skips it this week. **Take today off** moves the day's workout to the next rest day.
 - Missed exercises from a partly done day carry over until done, after the muscle has had a day's rest.
