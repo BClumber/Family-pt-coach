@@ -197,6 +197,11 @@ video.vid{width:100%;max-width:100%;border-radius:12px;background:#000;max-heigh
 .daytab[aria-pressed="true"] small{color:inherit;opacity:.85}
 .check2{display:flex;gap:8px;align-items:center;font-size:15px}
 .check2 input{width:20px;height:20px;accent-color:var(--accent)}
+.gtag{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:6px;padding:2px 6px;background:var(--accent-soft);color:var(--accent)}
+.gtag.g-legs{background:var(--ok-soft);color:var(--ok)}.gtag.g-core{background:var(--warn-soft);color:var(--warn)}.gtag.g-stretch,.gtag.g-cardio{background:var(--line);color:var(--muted)}
+.pill.moved{background:var(--accent-soft);color:var(--accent)}
+.soreline{grid-column:1/-1;display:flex;justify-content:flex-end;margin-top:-4px}
+.soreline .btn{padding:4px 8px;font-size:13px;color:var(--muted)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -216,10 +221,16 @@ video.vid{width:100%;max-width:100%;border-radius:12px;background:#000;max-heigh
 
 <script>
 (function(){
+'use strict';
+/* ============ constants ============ */
 const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const WEEK_ORDER=[1,2,3,4,5,6,0];
 const BANDS={'':['None',null],yellow:['Yellow','#f2d02b'],red:['Red','#d23b2f'],green:['Green','#2f9a4f'],blue:['Blue','#2a63c4'],black:['Black','#1b1b1b'],silver:['Silver','#b8bec4'],gold:['Gold','#c9a227']};
 const HUES=['#0a6a86','#8a4fb3','#c0562f','#2c7a4c','#b0306a','#5a6b16'];
 const SIDES={both:'',each:'each side',left:'left only',right:'right only'};
+const GROUPS={legs:{name:'Legs & hips',short:'Legs'},upper:{name:'Shoulders & arms',short:'Upper'},core:{name:'Core & back',short:'Core'},stretch:{name:'Stretch',short:'Stretch'},cardio:{name:'Walk / cardio',short:'Walk'},other:{name:'Other',short:'Other'}};
+const STRENGTH=['legs','upper','core','other'];
+const DEFAULT_DAYS=[1,2,4,5];
 const DEMOS={
  'glute-bridge':{name:'Glute bridge',url:'/demos/glute-bridge.mp4',match:/bridg/},
  'clamshell':{name:'Clamshell',url:'/demos/clamshell.mp4',match:/clam/},
@@ -240,42 +251,40 @@ const DEMOS={
  'prone-t':{name:'Prone T raise',url:'/demos/prone-t.mp4',match:/\bt[ -]?(raise|lift)/},
  'prone-i':{name:'Prone I raise',url:'/demos/prone-i.mp4',match:/\bi[ -]?(raise|lift)/}
 };
+const NERVE=/press.?up|nerve (glide|floss)|sciatic|pelvic tilt/i;
 const EXAMPLES=[
- {name:'Glute bridge',sets:2,reps:10,holdSec:3,restSec:30,side:'both',band:'',progress:true},
- {name:'Clamshell',sets:2,reps:12,holdSec:0,restSec:30,side:'each',band:'yellow',progress:true},
- {name:'Heel slide',sets:2,reps:10,holdSec:0,restSec:20,side:'each',band:'',progress:true},
- {name:'Calf stretch',sets:1,reps:3,holdSec:30,restSec:10,side:'each',band:'',progress:false}
+ {name:'Glute bridge',sets:2,reps:10,holdSec:3,restSec:30,group:'legs'},
+ {name:'Clamshell',sets:2,reps:12,holdSec:0,restSec:30,side:'each',band:'yellow',group:'legs'},
+ {name:'Heel slide',sets:2,reps:10,holdSec:0,restSec:20,side:'each',group:'legs'},
+ {name:'Calf stretch',sets:1,reps:3,holdSec:30,restSec:10,side:'each',group:'stretch',progress:false}
 ];
-const S2='Stage 2: start these once the leg pain is settling. Turn on rep increases once they feel easy.';
-const PRESETS={lumbar:{name:'Lumbar pinched nerve (sciatica)',
-  about:'Calms an irritated nerve in the low back first, then builds core support. Most of it is done every day; the core work goes on Day 2.',
-  flags:'Get checked right away (ER or same-day doctor) for numbness in the groin or inner thighs, new bladder or bowel trouble, a leg or foot getting weaker, or severe pain with fever.',
-  rule:'Watch where the leg pain goes. If it pulls back toward your spine or the leg feels better, keep going. If pain or tingling spreads further down the leg, stop that exercise and skip it for now.',
-  daily:[
-   {name:'Cat-cow',sets:1,reps:10,holdSec:0,restSec:0,demo:'cat-cow',notes:'Good first thing in the morning. Slow, move with your breath.'},
-   {name:'Prone press-up',sets:1,reps:10,holdSec:2,restSec:0,demo:'prone-press-up',notes:'Hips stay on the floor, let the low back sag. If a full press-up is too much, rest on your elbows. Can repeat every 2–3 hours if it helps. Stop if pain spreads further down the leg.'},
-   {name:'Pelvic tilt',sets:1,reps:10,holdSec:5,restSec:0,demo:'pelvic-tilt',notes:'On your back, knees bent. Tighten your belly and flatten the low back into the floor.'},
-   {name:'Sciatic nerve glide',sets:1,reps:10,holdSec:0,restSec:0,demo:'nerve-glide',notes:'Sore leg. Sit tall, straighten the knee as you look up, bend it as you tuck your chin. Gentle, like flossing. Never a hard stretch.'},
-   {name:'Figure-4 stretch',sets:2,reps:1,holdSec:30,restSec:10,side:'each',demo:'figure-four',notes:'On your back, ankle on the opposite knee, pull that thigh toward you. Stretch is in the buttock.'},
-   {name:'Hip flexor stretch',sets:2,reps:1,holdSec:30,restSec:10,side:'each',demo:'hip-flexor-stretch',notes:'Half-kneeling with a pad under the knee. Tuck your pelvis under, then shift forward.'},
-   {name:'Hamstring stretch (strap)',sets:2,reps:1,holdSec:30,restSec:10,side:'each',demo:'hamstring-strap',notes:'On your back with a strap or towel. Gentle. If it sends tingling down the leg, skip it and do the nerve glide instead.'},
-   {name:"Child's pose",sets:2,reps:1,holdSec:30,restSec:10,demo:'childs-pose',notes:'Skip it if it sends pain down the leg. Some disc problems don’t like bending forward.'},
-   {name:'Walk',sets:1,reps:10,holdSec:0,restSec:0,unit:'min',demo:'none',notes:'Flat ground, 2–3 times a day. One of the best things you can do for this.'}],
-  day2:[
-   {name:'Glute bridge',sets:2,reps:10,holdSec:3,restSec:30,demo:'glute-bridge',notes:S2},
-   {name:'Dead bug',sets:2,reps:8,holdSec:0,restSec:30,side:'each',demo:'dead-bug',notes:'Low back stays pressed down. '+S2},
-   {name:'Bird dog',sets:2,reps:8,holdSec:5,restSec:30,side:'each',demo:'bird-dog',notes:'Back flat like a table. '+S2},
-   {name:'Side plank (from knees)',sets:3,reps:1,holdSec:20,restSec:20,side:'each',demo:'side-plank-knees',notes:'Elbow under shoulder, straight line head to knees. Work up from 15 to 20 s. '+S2}],
-  avoid:'Avoid for now: toe-touches, sit-ups and crunches, heavy lifting, twisting while lifting, and sitting slumped for more than 30 minutes.'},
+const PRESETS={
+ lumbar:{name:'Low back (after sciatica)',
+  about:'Core strength and hip and back stretches to keep the low back strong. Placed into your week automatically.',
+  rule:'If any exercise sends pain or tingling down the leg again, stop it and skip it for now.',
+  flags:'Get checked right away for numbness in the groin or inner thighs, new bladder or bowel trouble, a leg or foot getting weaker, or severe pain with fever.',
+  items:[
+   {name:'Glute bridge',sets:2,reps:10,holdSec:3,restSec:30,demo:'glute-bridge',group:'legs'},
+   {name:'Dead bug',sets:2,reps:8,holdSec:0,restSec:30,side:'each',demo:'dead-bug',group:'core',notes:'Low back stays pressed down.'},
+   {name:'Bird dog',sets:2,reps:8,holdSec:5,restSec:30,side:'each',demo:'bird-dog',group:'core',notes:'Back flat like a table.'},
+   {name:'Side plank (from knees)',sets:3,reps:1,holdSec:20,restSec:20,side:'each',demo:'side-plank-knees',group:'core',progress:false,notes:'Elbow under shoulder, straight line head to knees. Work up from 15 to 30 s.'},
+   {name:'Cat-cow',sets:1,reps:10,holdSec:0,restSec:0,demo:'cat-cow',group:'stretch',progress:false,notes:'Slow, move with your breath.'},
+   {name:'Figure-4 stretch',sets:2,reps:1,holdSec:30,restSec:10,side:'each',demo:'figure-four',group:'stretch',progress:false,notes:'Ankle on the opposite knee, pull that thigh toward you.'},
+   {name:'Hip flexor stretch',sets:2,reps:1,holdSec:30,restSec:10,side:'each',demo:'hip-flexor-stretch',group:'stretch',progress:false,notes:'Half-kneeling, tuck your pelvis under, then shift forward.'},
+   {name:'Hamstring stretch (strap)',sets:2,reps:1,holdSec:30,restSec:10,side:'each',demo:'hamstring-strap',group:'stretch',progress:false,notes:'Gentle. Strap or towel around the foot.'},
+   {name:"Child's pose",sets:2,reps:1,holdSec:30,restSec:10,demo:'childs-pose',group:'stretch',progress:false},
+   {name:'Walk',sets:1,reps:10,holdSec:0,restSec:0,unit:'min',demo:'none',group:'cardio',notes:'Flat ground, easy pace.'}],
+  avoid:'Stretches stay the same each week; everything else goes up by your weekly step.'},
  yti:{name:'Rotator cuff Y-T-I raises',
-  about:'Strengthens the rotator cuff and the muscles that hold the shoulder blades back. Goes on Day 3 (arms), with reps going up as you do them.',
-  rule:'A muscle burn between the shoulder blades is fine. Sharp or pinching pain in the front or top of the shoulder is not: stop that one and lower the height or skip it.',
-  day3:[
-   {name:'Prone Y raise',sets:2,reps:10,holdSec:2,restSec:30,demo:'prone-y',progress:true,notes:'Face down on a bed, bench or the floor (towel under your forehead). Arms in a Y, thumbs up toward the ceiling. Lead with the shoulder blades: squeeze them down and back, then lift a few inches.'},
-   {name:'Prone T raise',sets:2,reps:10,holdSec:2,restSec:30,demo:'prone-t',progress:true,notes:'Arms straight out to the sides, thumbs up. Pinch the shoulder blades together and lift a few inches. Don’t shrug toward your ears.'},
-   {name:'Prone I raise',sets:2,reps:10,holdSec:2,restSec:30,demo:'prone-i',progress:true,notes:'Arms overhead by your ears, thumbs up. Small lift, shoulders away from your ears. Usually the hardest of the three.'}],
-  avoid:'Start with no weight. Add 1–2 lb dumbbells (or soup cans) only when 15 clean reps feel easy, and drop back to fewer reps when you add weight. Lying face down is fine for the low back plan too.'}};
-const DAILY='daily';
+  about:'Strengthens the rotator cuff and the muscles that hold the shoulder blades back. Goes on your upper-body days.',
+  rule:'A burn between the shoulder blades is fine. Sharp or pinching pain in the shoulder joint is not: stop that one.',
+  items:[
+   {name:'Prone Y raise',sets:2,reps:10,holdSec:2,restSec:30,demo:'prone-y',group:'upper',notes:'Face down, arms in a Y, thumbs up. Squeeze the shoulder blades down and back, lift a few inches.'},
+   {name:'Prone T raise',sets:2,reps:10,holdSec:2,restSec:30,demo:'prone-t',group:'upper',notes:'Arms straight out, thumbs up. Pinch the shoulder blades, don’t shrug.'},
+   {name:'Prone I raise',sets:2,reps:10,holdSec:2,restSec:30,demo:'prone-i',group:'upper',notes:'Arms overhead by your ears, thumbs up. Small lift.'}],
+  avoid:'Start with no weight. Add 1–2 lb only when 15 clean reps feel easy.'}};
+
+/* ============ helpers ============ */
 const rid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -286,22 +295,61 @@ const parseKey=k=>{const[y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d
 const addDays=(k,n)=>{const d=parseKey(k);d.setDate(d.getDate()+n);return keyOf(d)};
 const mondayOf=k=>{const d=parseKey(k);d.setDate(d.getDate()-((d.getDay()+6)%7));return keyOf(d)};
 const diffDays=(a,b)=>Math.round((parseKey(b)-parseKey(a))/864e5);
-const newEx=o=>({id:rid(),name:'',sets:2,reps:10,holdSec:0,restSec:30,side:'both',band:'',notes:'',videoId:'',videoUrl:'',videoLink:'',demo:'',progress:true,...o});
-function newProfile(name,hue,withExamples){return{id:rid(),name,hue,startDate:mondayOf(dayKey()),increment:2,reminder:{time:'07:30'},daily:{id:DAILY,name:'Every day',exercises:[]},
-  dayTypes:[{id:rid(),name:'Legs & hips',exercises:withExamples?EXAMPLES.map(e=>newEx({...e,notes:'Example — replace with your own.'})):[]},{id:rid(),name:'Spine & abs',exercises:[]},{id:rid(),name:'Arms',exercises:[]}]}}
-function defaultState(){const p=newProfile('Me',0,true);return{v:2,activeId:p.id,exampleBanner:true,profiles:[p]}}
+const wd=k=>parseKey(k).getDay();
+const fmtDay=k=>DAYS[wd(k)]+' '+(parseKey(k).getMonth()+1)+'/'+parseKey(k).getDate();
+
+function guessGroup(e){
+  const n=(e.name||'').toLowerCase(),dm=e.demo||'';
+  if(e.unit==='min'||/\b(walk|bike|cycl|run|jog|swim|cardio|elliptical|treadmill)/.test(n))return'cardio';
+  if(/stretch|pose|cat.?cow|yoga|figure.?(4|four)|glide|child/.test(n)||/stretch|childs|cat-cow|figure/.test(dm))return'stretch';
+  if(/dead ?bug|bird ?dog|plank|pelvic|crunch|\babs?\b|core|superman|sit.?up|back ext/.test(n))return'core';
+  if(/\b[yti][ -]?(raise|lift)|row|press|curl|push|shoulder|arm|pull|fly|tricep|bicep|chest|rotator|external rot|internal rot/.test(n))return'upper';
+  if(/bridge|clam|squat|lunge|heel slide|calf|step|leg|hip|glute|knee|thigh|abduct|adduct/.test(n))return'legs';
+  return'other';
+}
+const lowerStretch=e=>/hip|hamstring|figure|piriformis|calf|quad|groin|adductor|it band|glute/.test((e.name||'').toLowerCase());
+const newEx=o=>{const e={id:rid(),name:'',sets:2,reps:10,holdSec:0,restSec:30,side:'both',band:'',notes:'',videoId:'',videoUrl:'',videoLink:'',demo:'',...o};
+  if(!GROUPS[e.group])e.group=guessGroup(e);if(e.progress===undefined)e.progress=e.group!=='stretch';return e};
+
+/* ============ weekly schedule ============ */
+// Alternates two kinds of workout day so each muscle group gets at least a day off between sessions:
+// A = legs, hips & core + lower-body stretches; B = shoulders & arms + back stretches + walking.
+function splitDays(p){const days=WEEK_ORDER.filter(d=>(p.trainDays||[]).includes(d));const A=[],B=[];days.forEach((d,i)=>(i%2?B:A).push(d));return{A,B,days}}
+function slotFor(p,e){const g=e.group;if(g==='legs'||g==='core')return'A';if(g==='stretch')return lowerStretch(e)?'A':'B';if(g==='other'){const s=splitDays(p);const cnt=x=>s[x].length?(p.week[s[x][0]]||[]).length:99;return cnt('A')<=cnt('B')?'A':'B'}return'B'}
+function placeOne(p,e){const s=splitDays(p);let target=s[slotFor(p,e)];if(!target.length)target=s.days;for(const d of target){const l=p.week[d]=p.week[d]||[];if(!l.includes(e.id))l.push(e.id)}}
+function buildWeek(p){p.week={};for(const d of WEEK_ORDER)p.week[d]=[];
+  const order={legs:0,upper:1,core:2,other:3,cardio:4,stretch:5};
+  [...p.lib].sort((a,b)=>(order[a.group]??9)-(order[b.group]??9)).forEach(e=>placeOne(p,e));p.auto=true}
+function scheduleDaysOf(p,id){return WEEK_ORDER.filter(d=>(p.week[d]||[]).includes(id))}
+// Same strength group on two days in a row (stretches and walking don't count)
+function backToBack(p){const out=[];for(const d of WEEK_ORDER){const n=(d+1)%7;const g1=new Set((p.week[d]||[]).map(id=>exById(p,id)).filter(Boolean).map(e=>e.group).filter(g=>STRENGTH.includes(g)));
+  for(const id of (p.week[n]||[])){const e=exById(p,id);if(e&&g1.has(e.group)){out.push({d,n,g:e.group});g1.delete(e.group)}}}return out}
+
+/* ============ state ============ */
+function newProfile(name,hue,withExamples){const p={v:3,id:rid(),name,hue,startDate:mondayOf(dayKey()),since:dayKey(),increment:2,reminder:{time:'07:30'},trainDays:DEFAULT_DAYS.slice(),lib:withExamples?EXAMPLES.map(e=>newEx({...e,notes:'Example — replace with your own.'})):[],week:{},auto:true,legacy:{names:{}}};buildWeek(p);return p}
+function defaultState(){const p=newProfile('Me',0,true);return{v:3,activeId:p.id,exampleBanner:true,profiles:[p]}}
+function toV2(st){ // first version (single list) → v2 shape
+  return{v:2,activeId:st.activeId,exampleBanner:st.exampleBanner!==false,profiles:st.profiles.map(o=>({id:o.id,name:o.name,hue:o.hue||0,reminder:{time:(o.reminder&&o.reminder.time)||'07:30'},daily:{id:'daily',exercises:[]},dayTypes:[{id:'legacy1',name:'Legs & hips',exercises:(o.exercises||[]).map(e=>({...e}))}]}))}}
 function migrate(st){
   if(!st||!Array.isArray(st.profiles)||!st.profiles.length)return defaultState();
-  if(st.v===2){for(const p of st.profiles)if(!p.daily)p.daily={id:DAILY,name:'Every day',exercises:[]};return st}
-  const out={v:2,activeId:st.activeId,exampleBanner:st.exampleBanner!==false,profiles:st.profiles.map(o=>{const p=newProfile(o.name,o.hue||0,false);p.id=o.id;p.reminder={time:(o.reminder&&o.reminder.time)||'07:30'};p.dayTypes[0].exercises=(o.exercises||[]).map(e=>newEx({...e,progress:e.holdSec>=20?false:true}));return p})};
+  if(st.v===3){for(const p of st.profiles){p.lib=p.lib||[];p.week=p.week||{};p.trainDays=p.trainDays||DEFAULT_DAYS.slice();p.legacy=p.legacy||{names:{}};for(const e of p.lib)if(!GROUPS[e.group])e.group=guessGroup(e)}return st}
+  if(st.v!==2)st=toV2(st);
+  const out={v:3,activeId:st.activeId,exampleBanner:st.exampleBanner!==false,lastBackup:st.lastBackup,profiles:st.profiles.map(o=>{
+    const seen=new Set(),lib=[];
+    for(const e of [...((o.daily&&o.daily.exercises)||[]),...(o.dayTypes||[]).flatMap(d=>d.exercises||[])]){
+      if(!e||seen.has(e.id))continue;seen.add(e.id);
+      if(NERVE.test(e.name||'')||['prone-press-up','nerve-glide','pelvic-tilt'].includes(e.demo))continue; // dropped in the Nov 2026 redesign
+      const n={...e};delete n.preset;n.group=guessGroup(n);n.progress=n.group!=='stretch';lib.push(n)}
+    const p={v:3,id:o.id,name:o.name,hue:o.hue||0,startDate:mondayOf(dayKey()),since:dayKey(),increment:o.increment??2,reminder:o.reminder||{time:'07:30'},trainDays:DEFAULT_DAYS.slice(),lib,week:{},auto:true,
+      migratedV3:true,legacy:{names:Object.fromEntries((o.dayTypes||[]).map(d=>[d.id,d.name]))}};
+    buildWeek(p);return p})};
   if(!out.profiles.find(p=>p.id===out.activeId))out.activeId=out.profiles[0].id;
   return out;
 }
 
-let ST=null, DD={}, view='today', progTab=null, S=null, MD=null, openVid=new Set();
-let mode='local', db=null, stateRef=null, dayCol=null;
+let ST=null, DD={}, view='today', progTab=null, S=null, MD=null, openVid=new Set(), selDay=null, editDay=null, editAll=false;
 /* uploaded videos live in this phone's IndexedDB */
-const VDB=(()=>{let p=null;const open=()=>p||(p=new Promise((res,rej)=>{const r=indexedDB.open('ptc-videos',1);r.onupgradeneeded=()=>r.result.createObjectStore('v');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
+const VDB=(()=>{let pr=null;const open=()=>pr||(pr=new Promise((res,rej)=>{const r=indexedDB.open('ptc-videos',1);r.onupgradeneeded=()=>r.result.createObjectStore('v');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
   const tx=(mode,fn)=>open().then(d=>new Promise((res,rej)=>{const t=d.transaction('v',mode),st=t.objectStore('v');const q=fn(st);t.oncomplete=()=>res(q&&q.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error||new Error('Phone storage is full'))}));
   return{put:(id,b)=>tx('readwrite',st=>st.put(b,id)),get:id=>tx('readonly',st=>st.get(id)),del:id=>tx('readwrite',st=>st.delete(id))}})();
 const URLS={};
@@ -309,24 +357,26 @@ const assets=(typeof indexedDB==='undefined')?null:{
   async upload(blob){const id='v'+rid();await VDB.put(id,blob);URLS[id]=URL.createObjectURL(blob);return{id,url:URLS[id]}},
   async delete(id){try{URL.revokeObjectURL(URLS[id])}catch(e){}delete URLS[id];await VDB.del(id)}
 };
-async function loadVideos(){if(!assets)return;for(const p of ST.profiles)for(const dt of [p.daily,...p.dayTypes])for(const ex of dt.exercises){if(!ex.videoId){ex.videoUrl='';continue}
+async function loadVideos(){if(!assets)return;for(const p of ST.profiles)for(const ex of p.lib){if(!ex.videoId){ex.videoUrl='';continue}
   try{if(!URLS[ex.videoId]){const b=await VDB.get(ex.videoId);if(b)URLS[ex.videoId]=URL.createObjectURL(b)}}catch(e){}ex.videoUrl=URLS[ex.videoId]||''}}
-try{ST=JSON.parse(localStorage.getItem('ptc-state')||'null');DD=JSON.parse(localStorage.getItem('ptc-days')||'{}')||{}}catch(e){}
-const firstRun=!ST||ST.v!==2;ST=migrate(ST);
-if(firstRun){try{ST.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(ST))}catch(e){}}
 
-/* ---------- persistence ---------- */
-let saveT=null, chain=Promise.resolve(); const dayTimers={};
+function readStored(key,fallback){try{return JSON.parse(localStorage.getItem(key)||'null')||fallback}catch(e){return fallback}}
+ST=readStored('ptc-state',null);DD=readStored('ptc-days',{});
+{const was=ST&&ST.v;ST=migrate(ST);
+ if(was!==3){try{if(was){localStorage.setItem('ptc-state-before-v3',JSON.stringify(readStored('ptc-state',null)))}ST.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(ST))}catch(e){}}}
+
+/* ============ saving ============ */
+let saveT=null; const dayTimers={};
 function setSync(t,bad){const el=$('sync');el.textContent=t;el.style.color=bad?'var(--bad)':''}
 const failMsg='Not saved — phone storage is full or blocked. Save a backup in Settings.';
-function readStored(key,fallback){try{return JSON.parse(localStorage.getItem(key)||'null')||fallback}catch(e){return fallback}}
-// Bring in anything newer that another open copy of the app saved. Each day keeps whichever copy was changed last.
+// Bring in anything newer another open copy of the app saved. Each day keeps whichever copy changed last.
 function mergeStoredDays(){const st=readStored('ptc-days',{});let changed=false;
   for(const k in st){const a=st[k],b=DD[k];if(!b||((a&&a.t)||0)>((b&&b.t)||0)){if(!dayTimers[k]){DD[k]=a;changed=true}}}return changed}
 function writeDays(){mergeStoredDays();localStorage.setItem('ptc-days',JSON.stringify(DD))}
 function writeState(){ST.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(ST))}
 function save(){clearTimeout(saveT);saveT=setTimeout(()=>{saveT=null;try{writeState();setSync('Saved on this phone')}catch(e){setSync(failMsg,true)}},400)}
-function saveDay(k){if(DD[k])DD[k].t=Date.now();clearTimeout(dayTimers[k]);dayTimers[k]=setTimeout(()=>{delete dayTimers[k];try{writeDays();setSync('Saved on this phone')}catch(e){setSync(failMsg,true)}},300)}
+function saveDay(k){const d=DD[k];if(d){d.t=Date.now();const p=ST.profiles.find(x=>x.id===d.pid);if(p&&d.date>=dayKey())d.plan=planned(p,d.date).map(e=>e.id)}
+  clearTimeout(dayTimers[k]);dayTimers[k]=setTimeout(()=>{delete dayTimers[k];try{writeDays();setSync('Saved on this phone')}catch(e){setSync(failMsg,true)}},300)}
 function flushNow(){let s1=false,s2=false;if(saveT){clearTimeout(saveT);saveT=null;s1=true}for(const k in dayTimers){clearTimeout(dayTimers[k]);delete dayTimers[k];s2=true}
   try{if(s1)writeState();if(s2)writeDays()}catch(e){setSync(failMsg,true)}}
 window.addEventListener('pagehide',flushNow);
@@ -335,181 +385,164 @@ window.addEventListener('storage',e=>{if(e.key==='ptc-days'||e.key==='ptc-state'
 function syncFromStorage(){let changed=mergeStoredDays();
   const st=readStored('ptc-state',null);if(st&&st.t&&st.t>(ST.t||0)&&!saveT){ST=migrate(st);changed=true;loadVideos().then(()=>{if(!busy())render()})}
   if(changed&&!busy())render()}
-/* ---------- program logic ---------- */
+
+/* ============ program logic ============ */
 const prof=()=>ST.profiles.find(p=>p.id===ST.activeId)||ST.profiles[0];
 const docKey=(p,date)=>p.id+'_'+date;
 const docOf=(p,date)=>DD[docKey(p,date)];
-const anyChecked=d=>d&&d.checked&&Object.values(d.checked).some(Boolean);
+function ensureDoc(p,date){const k=docKey(p,date);if(!DD[k])DD[k]={pid:p.id,date,checked:{},reps:{},names:{},out:{},in:{},skipCarry:{},pain:null,note:''};const d=DD[k];for(const f of ['checked','reps','names','out','in','skipCarry'])d[f]=d[f]||{};return d}
+const exById=(p,id)=>p.lib.find(e=>e.id===id);
 function weekNo(p,date){return Math.max(1,Math.floor(diffDays(p.startDate,date)/7)+1)}
-// Reps go up by the person's step after every 7 days the exercise was ticked (in a row or not).
-const EVERY=7;
-function timesDone(p,exId,before){let n=0;for(const k in DD){const x=DD[k];if(x&&x.pid===p.id&&x.date<before&&x.checked&&x.checked[exId])n++}return n}
-function repsFor(p,ex,date){if(!ex)return 0;return ex.progress===false?ex.reps:ex.reps+(p.increment||0)*Math.floor(timesDone(p,ex.id,date)/EVERY)}
-function progressNote(p,ex,date){if(ex.progress===false||!(p.increment||0))return'';const n=timesDone(p,ex.id,date)%EVERY;return n+' of '+EVERY+' until +'+p.increment+(ex.unit==='min'?' min':' reps')}
-function dtIndex(p,id){return p.dayTypes.findIndex(d=>d.id===id)}
-function getList(p,id){return id===DAILY?p.daily:p.dayTypes[dtIndex(p,id)]}
-const todayList=(p,dt)=>[...p.daily.exercises,...dt.exercises];
-function planFor(p,date){
-  const d=docOf(p,date);
-  if(d&&dtIndex(p,d.dayTypeId)>=0&&(d.pick||rotChecked(p,d)))return p.dayTypes[dtIndex(p,d.dayTypeId)];
-  let best=null;
-  for(const k in DD){const x=DD[k];if(x.pid===p.id&&x.date<date&&rotChecked(p,x)&&(!best||x.date>best.date))best=x}
-  if(!best)return p.dayTypes[0];
-  const i=dtIndex(p,best.dayTypeId);
-  return p.dayTypes[(i<0?0:i+1)%p.dayTypes.length];
-}
-function ensureDoc(p,date,dt){const k=docKey(p,date);if(!DD[k])DD[k]={pid:p.id,date,dayTypeId:dt.id,checked:{},reps:{},pain:null,note:''};return DD[k]}
-function rotChecked(p,x){if(x.rest===true)return false;const dt=p.dayTypes[dtIndex(p,x.dayTypeId)];return!!(dt&&x.checked&&dt.exercises.some(e=>x.checked[e.id]))}
-function isRest(p,date){const d=docOf(p,date);if(d&&d.rest===true)return true;if(d&&d.rest===false)return false;return(p.restDays||[]).includes(parseKey(date).getDay())}
-function shownList(p,dt,date){return isRest(p,date)?(p.restKeepsDaily!==false?p.daily.exercises:[]):todayList(p,dt)}
-// Rest days keep the streak alive without adding to it.
-// What each coming day will be, keeping the rotation order and skipping rest days.
-function forecast(p,fromDate,days){
-  const out={},n=p.dayTypes.length;if(!n)return out;
-  let i=dtIndex(p,planFor(p,fromDate).id);if(i<0)i=0;
-  const d0=docOf(p,fromDate);
-  if(!isRest(p,fromDate)&&d0&&rotChecked(p,d0))i=(dtIndex(p,d0.dayTypeId)+1)%n; // today's done: tomorrow is the next one
-  else if(!isRest(p,fromDate))i=(i+1)%n; // today not done yet: assume it will be
-  for(let k=1;k<=days;k++){const day=addDays(fromDate,k);if(isRest(p,day)){out[day]='rest';continue}out[day]=p.dayTypes[i];i=(i+1)%n}
-  return out;
-}
-// Workout exercises you skipped on a day you did some of that workout. They carry over until ticked or skipped.
+function repsFor(p,ex,date){if(!ex)return 0;return ex.progress===false?ex.reps:ex.reps+(p.increment||0)*(weekNo(p,date)-1)}
+const anyChecked=d=>d&&d.checked&&Object.values(d.checked).some(Boolean);
+// What's on a given date: that weekday's schedule, minus anything moved away, plus anything moved in.
+function planned(p,date){const d=docOf(p,date);let ids=(p.week[wd(date)]||[]).slice();
+  if(d&&d.out)ids=ids.filter(id=>!d.out[id]);
+  if(d&&d.in)for(const id in d.in)if(d.in[id]&&!ids.includes(id))ids.push(id);
+  return ids.map(id=>exById(p,id)).filter(Boolean)}
+function groupsOf(list){const s=new Set(list.map(e=>e.group));return STRENGTH.filter(g=>s.has(g))}
+function dayTitle(list){const g=groupsOf(list);if(g.length)return g.map(x=>GROUPS[x].name).join(' · ');if(list.some(e=>e.group==='stretch'))return'Stretching';if(list.length)return GROUPS[list[0].group].name;return'Rest day'}
+function dayShort(list){const g=groupsOf(list);if(g.length)return g.map(x=>GROUPS[x].short).join('+');if(list.length)return GROUPS[list[0].group].short;return'Rest'}
+// Exercises skipped on a day you did part of the workout. They carry over until ticked, moved or dropped.
 function missedFor(p,today){
-  const all=new Map();for(const dt of p.dayTypes)for(const e of dt.exercises)all.set(e.id,e);
-  const docs=Object.values(DD).filter(x=>x&&x.pid===p.id&&x.date<today).sort((a,b)=>a.date<b.date?-1:1);
-  const pend=new Map();
+  const docs=Object.values(DD).filter(x=>x&&x.pid===p.id&&x.date<today).sort((a,b)=>a.date<b.date?-1:1);const pend=new Map();
   for(const x of docs){
     for(const id in (x.checked||{}))if(x.checked[id])pend.delete(id);
+    for(const id in (x.skipCarry||{}))if(x.skipCarry[id])pend.delete(id);
     for(const id in (x.skip||{}))if(x.skip[id])pend.delete(id);
-    if(!rotChecked(p,x))continue;
-    const dt=p.dayTypes[dtIndex(p,x.dayTypeId)];
-    for(const e of dt.exercises)if(!x.checked[e.id]){const o=pend.get(e.id);pend.set(e.id,{since:o?o.since:x.date,last:x.date})}
+    for(const id in (x.in||{}))if(x.in[id])pend.delete(id); // moved into a later day: that day owns it now
+    if(!x.plan||!x.plan.some(id=>x.checked&&x.checked[id]))continue;
+    for(const id of x.plan)if(!(x.checked&&x.checked[id])&&!(x.out&&x.out[id])){const o=pend.get(id);pend.set(id,{since:o?o.since:x.date,last:x.date})}
   }
-  const d=docOf(p,today),todayDt=planFor(p,today),inToday=new Set(todayDt.exercises.map(e=>e.id));
-  const out=[];for(const [id,m] of pend){const ex=all.get(id);if(!ex||inToday.has(id)||(d&&d.skip&&d.skip[id]))continue;out.push({ex,...m})}
-  return out;
-}
-function missedLabel(m,today){const y=addDays(today,-1),f=k=>DAYS[parseKey(k).getDay()]+' '+(parseKey(k).getMonth()+1)+'/'+parseKey(k).getDate();
-  if(m.since===y)return'Missed yesterday';if(m.since===m.last)return'Missed '+f(m.since);return'Missed since '+f(m.since)}
-const allExercises=p=>[p.daily,...p.dayTypes].flatMap(l=>l.exercises);
-function firstDate(p){let f=p.startDate;for(const k in DD){const x=DD[k];if(x.pid===p.id&&x.date<f)f=x.date}return f}
-function streak(p){const set=new Set(Object.values(DD).filter(x=>x.pid===p.id&&anyChecked(x)).map(x=>x.date));let k=dayKey(),n=0,guard=0;
-  if(!set.has(k))k=addDays(k,-1);
-  const f0=firstDate(p);while(guard++<730&&k>=f0){if(set.has(k))n++;else if(!isRest(p,k))break;k=addDays(k,-1)}return n}
+  const d=docOf(p,today),inToday=new Set(planned(p,today).map(e=>e.id));const out=[];
+  // wait a day if that muscle group was worked yesterday
+  const y=docOf(p,addDays(today,-1)),yGroups=new Set(y?Object.keys(y.checked||{}).filter(i=>y.checked[i]).map(i=>exById(p,i)).filter(Boolean).map(e=>e.group).filter(g=>STRENGTH.includes(g)):[]);
+  for(const [id,m] of pend){const ex=exById(p,id);if(!ex||inToday.has(id)||(d&&d.skipCarry&&d.skipCarry[id])||yGroups.has(ex.group))continue;out.push({ex,...m})}
+  return out}
+function missedLabel(m,today){if(m.since===addDays(today,-1))return'Missed yesterday';if(m.since===m.last)return'Missed '+fmtDay(m.since);return'Missed since '+fmtDay(m.since)}
+function isTrainDay(p,date){return planned(p,date).length>0}
+function firstDate(p){let f=p.startDate;for(const k in DD){const x=DD[k];if(x&&x.pid===p.id&&x.date<f)f=x.date}return f}
+// Streak: days with something ticked; rest days and days off keep it going.
+function streak(p){const set=new Set(Object.values(DD).filter(x=>x&&x.pid===p.id&&anyChecked(x)).map(x=>x.date));let k=dayKey(),n=0,g=0;if(!set.has(k))k=addDays(k,-1);const f0=firstDate(p);
+  while(g++<730&&k>=f0){const d=docOf(p,k);if(set.has(k))n++;else if(!(d&&d.off)&&isTrainDay(p,k)&&k>=(p.since||'0'))break;k=addDays(k,-1)}return n}
+// Best day to move a sore exercise to: no same muscle group that day or the day before.
+function moveOptions(p,ex,from){const out=[];let rec=null;
+  for(let i=1;i<=7;i++){const k=addDays(from,i),list=planned(p,k),prev=i===1?planned(p,from).filter(e=>e.id!==ex.id):planned(p,addDays(k,-1));
+    const same=list.some(e=>e.group===ex.group&&e.id!==ex.id),before=prev.some(e=>e.group===ex.group);
+    const strength=STRENGTH.includes(ex.group),ok=!strength||(!same&&!before);
+    const o={k,list,same:strength&&same,before:strength&&before,ok};if(ok&&!rec){rec=o;o.rec=true}out.push(o)}
+  return out}
+function moveEx(p,id,from,to){const a=ensureDoc(p,from);const inBase=(p.week[wd(from)]||[]).includes(id);
+  if(inBase)a.out[id]=to||'skip';else if(a.in[id])delete a.in[id];else a.skipCarry[id]=true;
+  delete a.checked[id];saveDay(docKey(p,from));
+  if(to){const b=ensureDoc(p,to);if((p.week[wd(to)]||[]).includes(id))delete b.out[id];else b.in[id]=from;saveDay(docKey(p,to))}}
+function offTarget(p,from){for(let i=1;i<=6;i++){const k=addDays(from,i);if(!(p.trainDays||[]).includes(wd(k)))return k}return addDays(from,1)}
+
 function sidesOf(ex){return ex.side==='each'?['Left side','Right side']:ex.side==='left'?['Left side']:ex.side==='right'?['Right side']:['']}
 function doseText(ex,reps){if(ex.unit==='min')return reps+' min';let t=ex.sets+' × '+reps;if(ex.holdSec>0)t+=' · '+ex.holdSec+' s hold';if(SIDES[ex.side])t+=' · '+SIDES[ex.side];return t}
 function demoFor(ex){if(!ex||ex.demo==='none')return null;if(ex.demo&&DEMOS[ex.demo])return DEMOS[ex.demo];const n=(ex.name||'').toLowerCase();return Object.values(DEMOS).find(d=>d.match.test(n))||null}
 const vidSrc=ex=>ex.videoUrl||(demoFor(ex)||{}).url||'';
 function avatar(p){return'<span class="av" style="background:'+HUES[p.hue%HUES.length]+'">'+esc(((p.name||'?').trim()[0]||'?').toUpperCase())+'</span>'}
 function bandHtml(b){if(!b||!BANDS[b])return'';return'<span class="band"><span class="sw" style="background:'+BANDS[b][1]+'"></span>'+BANDS[b][0]+' band</span>'}
+const grpTag=e=>'<span class="gtag g-'+e.group+'">'+GROUPS[e.group].short+'</span>';
 function fmtTime(t){if(!t)return'';const[h,m]=t.split(':').map(Number);return((h%12)||12)+':'+String(m).padStart(2,'0')+' '+(h<12?'AM':'PM')}
-const dayLabel=(p,dt)=>dt.id===DAILY?'Every day':'Day '+(dtIndex(p,dt.id)+1);
+const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const standalone=navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
+let iosHint=false;try{iosHint=sessionStorage.getItem('ptc-ios')==='1'}catch(e){}
 
-/* ---------- views ---------- */
+/* ============ views ============ */
 function render(){
   document.body.classList.toggle('insession',!!S);$('tabs').hidden=!!S;$('top').hidden=!!S;
-  if(S){renderSession(true);return}
+  if(S){renderSession();return}
   $('chips').innerHTML=ST.profiles.map(p=>'<button class="chip" data-a="prof" data-id="'+p.id+'" aria-pressed="'+(p.id===ST.activeId)+'">'+avatar(p)+esc(p.name)+'</button>').join('')+'<button class="chip add" data-a="addprof">+ Person</button>';
   document.querySelectorAll('#tabs button').forEach(b=>b.setAttribute('aria-current',b.dataset.id===view?'page':'false'));
   $('main').innerHTML=view==='today'?vToday():view==='week'?vWeek():vProgram();
 }
+function exCard(p,ex,d,today,tag,movedFrom){
+  const on=!!(d&&d.checked[ex.id]),reps=(on&&d.reps&&d.reps[ex.id])||repsFor(p,ex,today),v=vidSrc(ex),open=openVid.has(ex.id);
+  return'<article class="card check'+(on?' on':'')+(tag?' carry':'')+'"><button class="cb" data-a="check" data-id="'+ex.id+'" aria-pressed="'+on+'" aria-label="Mark '+esc(ex.name)+' done">✓</button>'+
+   '<div class="info">'+(tag?'<span class="pill missed">'+esc(tag)+'</span>':'')+(movedFrom?'<span class="pill moved">Moved from '+esc(fmtDay(movedFrom))+'</span>':'')+'<h3>'+esc(ex.name)+'</h3><span class="dose">'+esc(doseText(ex,reps))+'</span><div class="row">'+grpTag(ex)+bandHtml(ex.band)+'</div></div>'+
+   '<div class="acts">'+((v||ex.videoLink)?'<button class="iconbtn" data-a="vid" data-id="'+ex.id+'" aria-label="Show video" aria-pressed="'+open+'">▶</button>':'')+(ex.unit==='min'?'':'<button class="iconbtn" data-a="timer" data-id="'+ex.id+'" aria-label="Guided timer">⏱</button>')+'</div>'+
+   (on?'':'<div class="soreline"><button class="btn sm ghost" data-a="sore" data-id="'+ex.id+'">Sore? Move it</button></div>')+
+   (open?'<div class="more">'+(v?'<video class="vid" src="'+esc(v)+'" controls loop muted playsinline autoplay preload="auto"></video>':'')+(ex.videoLink?'<a class="btn sm" href="'+esc(ex.videoLink)+'" target="_blank" rel="noopener">Open video link ↗</a>':'')+(ex.notes?'<p class="small muted" style="margin:0;white-space:pre-wrap">'+esc(ex.notes)+'</p>':'')+'</div>':(ex.notes&&!on?'<p class="small muted" style="margin:0;grid-column:1/-1;white-space:pre-wrap">'+esc(ex.notes)+'</p>':''))+'</article>'}
 function vToday(){
-  const p=prof(),today=dayKey(),dt=planFor(p,today),wk=weekNo(p,today),d=docOf(p,today);
-  const rest=isRest(p,today),missed=rest?[]:missedFor(p,today),exs=[...missed.map(m=>m.ex),...shownList(p,dt,today)],done=exs.filter(e=>d&&d.checked[e.id]).length;
-  const scheduledRest=(p.restDays||[]).includes(new Date().getDay());
+  const p=prof(),today=dayKey(),d=docOf(p,today),wk=weekNo(p,today),list=planned(p,today),missed=missedFor(p,today);
+  const all=[...missed.map(m=>m.ex),...list],done=all.filter(e=>d&&d.checked[e.id]).length;
   let h='';
   if(isIOS&&!standalone&&!iosHint)h+='<div class="banner" style="background:var(--warn-soft)"><p><b>Use the home-screen app.</b> On iPhone, Safari and the home-screen icon keep separate check-offs, and Safari can clear them after a week away. Tap Share → Add to Home Screen and always open it from there.</p><button class="btn sm ghost" data-a="iosok">OK</button></div>';
-  if(ST.exampleBanner)h+='<div class="banner"><p><b>Day 1 has example exercises.</b> Swap in your own list under Program, or load a ready-made plan there (like the lumbar pinched-nerve plan).</p><button class="btn sm ghost" data-a="dismiss">Got it</button></div>';
-  if(rest){
-    h+='<section class="card hero"><div class="row between"><span class="eyebrow">'+DAYS[new Date().getDay()]+' · Week '+wk+'</span><span class="pill restday">Rest day</span></div>';
-    h+='<h2>Rest day</h2><p class="small muted" style="margin:0">'+(exs.length?'Just your every-day exercises today. ':'Nothing to do today. ')+'Your streak stays. '+dayLabel(p,dt)+' · '+esc(dt.name)+' moves to your next workout day, so the order stays the same.</p>';
-    if(exs.length)h+='<div class="prog"><i style="width:'+(done/exs.length*100)+'%"></i></div>';
-    h+='<button class="btn" data-a="restoff">'+(scheduledRest&&!(d&&d.rest===true)?'Work out anyway':'Undo rest day')+'</button></section>';
-  }else{
-  h+='<section class="card hero"><div class="row between"><span class="eyebrow">'+DAYS[new Date().getDay()]+' · Week '+wk+'</span>'+(exs.length&&done===exs.length?'<span class="pill done">✓ All done</span>':'<span class="pill due">'+done+' of '+exs.length+' done</span>')+'</div>';
-  h+='<h2>'+dayLabel(p,dt)+' · '+esc(dt.name)+'</h2>';
-  h+='<div class="prog"><i style="width:'+(exs.length?done/exs.length*100:0)+'%"></i></div>';
-  h+='<div class="daytabs" role="group" aria-label="Switch today\'s workout">'+p.dayTypes.map(x=>'<button class="daytab" data-a="setday" data-id="'+x.id+'" aria-pressed="'+(x.id===dt.id)+'">'+dayLabel(p,x)+'<small>'+esc(x.name)+'</small></button>').join('')+'</div>';
+  if(ST.exampleBanner&&p.lib.some(e=>/^Example —/.test(e.notes||'')))h+='<div class="banner"><p><b>These are example exercises.</b> Add your own under Program, or load a ready-made plan there.</p><button class="btn sm ghost" data-a="dismiss">Got it</button></div>';
+  if(ST.v3note!==true&&p.migratedV3)h+='<div class="banner"><p><b>New weekly schedule.</b> Your exercises are now spread over '+(p.trainDays||[]).length+' days a week so each muscle group gets time to recover, reps go up '+(p.increment||0)+' every week, and the every-day list is gone. Change days in Program.</p><button class="btn sm ghost" data-a="v3ok">OK</button></div>';
+  const off=d&&d.off;
+  h+='<section class="card hero"><div class="row between"><span class="eyebrow">'+DAYS[wd(today)]+' · Week '+wk+'</span>'+(off?'<span class="pill restday">Day off</span>':!all.length?'<span class="pill restday">Rest day</span>':done===all.length?'<span class="pill done">✓ All done</span>':'<span class="pill due">'+done+' of '+all.length+' done</span>')+'</div>';
+  if(off){h+='<h2>Day off</h2><p class="small muted" style="margin:0">Today’s workout moved to '+esc(fmtDay(d.offTo))+'.</p><button class="btn" data-a="offundo">Undo day off</button>'}
+  else if(!all.length){const nx=nextTrain(p,today);h+='<h2>Rest day</h2><p class="small muted" style="margin:0">Recovery is when muscles grow. '+(nx?'Next workout: '+esc(fmtDay(nx))+' · '+esc(dayTitle(planned(p,nx)))+'.':'')+'</p>'}
+  else{h+='<h2>'+esc(dayTitle(list.length?list:all))+'</h2><div class="prog"><i style="width:'+(done/all.length*100)+'%"></i></div>';
+    if(wk>1&&(p.increment||0))h+='<p class="small muted" style="margin:0">Week '+wk+': <span class="up">+'+(p.increment*(wk-1))+' reps</span> on strength exercises.</p>'}
   h+='</section>';
-  }
-  const card=(ex,tag)=>{const on=!!(d&&d.checked[ex.id]);const reps=(on&&d.reps&&d.reps[ex.id])||repsFor(p,ex,today);const v=vidSrc(ex);const open=openVid.has(ex.id);
-    return'<article class="card check'+(on?' on':'')+(tag?' carry':'')+'"><button class="cb" data-a="check" data-id="'+ex.id+'" aria-pressed="'+on+'" aria-label="Mark '+esc(ex.name)+' done">✓</button><div class="info">'+(tag?'<span class="pill missed">'+esc(tag)+'</span>':'')+'<h3>'+esc(ex.name)+'</h3><span class="dose">'+esc(doseText(ex,reps))+'</span>'+(progressNote(p,ex,today)?'<span class="small muted">'+esc(progressNote(p,ex,today))+'</span>':'')+bandHtml(ex.band)+'</div><div class="acts">'+((v||ex.videoLink)?'<button class="iconbtn" data-a="vid" data-id="'+ex.id+'" aria-label="Show video" aria-pressed="'+open+'">▶</button>':'')+(ex.unit==='min'?'':'<button class="iconbtn" data-a="timer" data-id="'+ex.id+'" aria-label="Guided timer">⏱</button>')+(tag&&!on?'<button class="iconbtn" data-a="skipmiss" data-id="'+ex.id+'" aria-label="Skip '+esc(ex.name)+'" title="Skip it">✕</button>':'')+'</div>'+
-    (open?'<div class="more">'+(v?'<video class="vid" src="'+esc(v)+'" controls loop muted playsinline autoplay preload="auto"></video>':'')+(ex.videoLink?'<a class="btn sm" href="'+esc(ex.videoLink)+'" target="_blank" rel="noopener">Open video link ↗</a>':'')+(ex.notes?'<p class="small muted" style="margin:0;white-space:pre-wrap">'+esc(ex.notes)+'</p>':'')+'</div>':(ex.notes&&!on?'<p class="small muted" style="margin:0;grid-column:1/-1;white-space:pre-wrap">'+esc(ex.notes)+'</p>':''))+'</article>'};
-  if(rest){if(exs.length)h+='<span class="eyebrow">Every day</span><div class="exlist">'+exs.map(e=>card(e)).join('')+'</div>'}
-  else{
-  if(missed.length)h+='<span class="eyebrow">Carried over · do these too</span><div class="exlist">'+missed.map(m=>card(m.ex,missedLabel(m,today))).join('')+'</div><p class="small muted" style="margin:0">They stay here until you tick them. Tap ✕ to skip one.</p>';
-  if(p.daily.exercises.length)h+='<span class="eyebrow">Every day</span><div class="exlist">'+p.daily.exercises.map(e=>card(e)).join('')+'</div>';
-  if(p.daily.exercises.length)h+='<span class="eyebrow">'+dayLabel(p,dt)+' · '+esc(dt.name)+'</span>';
-  if(!dt.exercises.length)h+='<div class="card empty">No '+esc(dt.name)+' exercises yet.<br><br><button class="btn" data-a="goprog" data-id="'+dt.id+'">Add exercises</button></div>';
-  h+='<div class="exlist">'+dt.exercises.map(e=>card(e)).join('')+'</div>';
-  h+='<button class="btn ghost" data-a="reston">Make today a rest day</button>';
-  }
-  if(exs.length&&done===exs.length){
-    h+='<section class="card"><span class="eyebrow">How did it feel? Pain 0–10</span><div class="painscale">'+Array.from({length:11},(_,i)=>'<button data-a="pain" data-id="'+i+'" aria-pressed="'+(d.pain===i)+'">'+i+'</button>').join('')+'</div><div class="row between small muted"><span>No pain</span><span>Worst</span></div><div class="f"><label for="t-note">Note (optional)</label><textarea id="t-note" placeholder="Left hip tight on bridges">'+esc(d.note||'')+'</textarea></div></section>';
-  }
+  if(missed.length&&!off)h+='<span class="eyebrow">Carried over</span><div class="exlist">'+missed.map(m=>exCard(p,m.ex,d,today,missedLabel(m,today))).join('')+'</div>';
+  if(list.length&&!off){if(missed.length)h+='<span class="eyebrow">Today</span>';h+='<div class="exlist">'+list.map(e=>exCard(p,e,d,today,null,d&&d.in&&d.in[e.id])).join('')+'</div>';
+    if(done<all.length)h+='<button class="btn ghost" data-a="offday">Take today off (moves the workout to '+esc(fmtDay(offTarget(p,today)))+')</button>'}
+  if(all.length&&done===all.length&&!off)h+='<section class="card"><span class="eyebrow">How did it feel? Pain 0–10</span><div class="painscale">'+Array.from({length:11},(_,i)=>'<button data-a="pain" data-id="'+i+'" aria-pressed="'+(d.pain===i)+'">'+i+'</button>').join('')+'</div><div class="row between small muted"><span>No pain</span><span>Worst</span></div><div class="f"><label for="t-note">Note (optional)</label><textarea id="t-note" placeholder="Left hip tight on bridges">'+esc(d.note||'')+'</textarea></div></section>';
   h+='<div class="stats"><div class="stat"><b>'+streak(p)+'</b><span>day streak</span></div><div class="stat"><b>'+wk+'</b><span>program week</span></div><div class="stat"><b>'+(p.reminder&&p.reminder.time?fmtTime(p.reminder.time):'–')+'</b><span>daily reminder</span></div></div>';
-  return h;
-}
-let selDay=null,editDay=null;
-const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-const standalone=navigator.standalone===true||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
-let iosHint=false;try{iosHint=sessionStorage.getItem('ptc-ios')==='1'}catch(e){}
+  return h}
+function nextTrain(p,from){for(let i=1;i<=7;i++){const k=addDays(from,i);if(planned(p,k).length)return k}return null}
 function dayInfo(p,k){
-  const d=docOf(p,k),dt=d&&p.dayTypes[dtIndex(p,d.dayTypeId)],rest=isRest(p,k);
-  const list=dt?(d.rest===true||rest?p.daily.exercises:[...p.daily.exercises,...dt.exercises]):p.daily.exercises;
+  const d=docOf(p,k),today=dayKey();let ids;
+  if(k>=today||(d&&!d.plan&&k>=(p.since||'9')))ids=planned(p,k).map(e=>e.id);
+  else if(d&&d.plan)ids=d.plan.slice();
+  else if(k>=(p.since||'9'))ids=planned(p,k).map(e=>e.id);
+  else ids=[];
   const doneIds=d?Object.keys(d.checked||{}).filter(id=>d.checked[id]):[];
-  const known=new Set(list.map(e=>e.id));
-  const extra=doneIds.filter(id=>!known.has(id)).map(id=>{const all=[p.daily,...p.dayTypes].flatMap(l=>l.exercises).find(e=>e.id===id);return all||{id,name:(d.names&&d.names[id])||'Exercise (since removed)'}});
-  return{d,dt,rest,list:[...list,...extra],doneIds,n:doneIds.length,tot:list.length+extra.length};
-}
+  for(const id of doneIds)if(!ids.includes(id))ids.push(id);
+  const list=ids.map(id=>exById(p,id)||{id,name:(d&&d.names&&d.names[id])||'Exercise (since removed)',group:'other'});
+  const legacy=d&&d.dayTypeId&&p.legacy&&p.legacy.names[d.dayTypeId];
+  return{d,list,doneIds,n:doneIds.length,tot:list.length,legacy,off:!!(d&&d.off)}}
 function vWeek(){
-  const p=prof(),today=dayKey(),mon=mondayOf(today),fc=forecast(p,today,7);
-  if(!selDay)selDay=today;
-  const cell=k=>{const I=dayInfo(p,k),fut=k>today,f=fc[k];
-    let cls='',top='',bot='';
-    if(fut){if(f==='rest'){cls='rst plan';top='Rest'}else if(f){cls='plan';top='D'+(dtIndex(p,f.id)+1);bot='next'}}
-    else if(I.rest&&!(I.d&&rotChecked(p,I.d))){cls='rst';top='Rest';bot=I.n?I.n+' done':''}
-    else{cls=I.n&&I.n>=I.tot?'full':I.n?'part':'';top=I.d&&rotChecked(p,I.d)?'D'+(dtIndex(p,I.dt.id)+1):I.n?'✓':'–';bot=I.n?I.n+'/'+I.tot:(k===today?'today':'')}
-    return'<button class="'+cls+(k===today?' today':'')+(k===selDay?' sel':'')+'" data-a="wkday" data-id="'+k+'" aria-pressed="'+(k===selDay)+'"><span>'+DAYS[parseKey(k).getDay()]+'</span><b>'+top+'</b><span>'+bot+'</span></button>'};
+  const p=prof(),today=dayKey(),mon=mondayOf(today);if(!selDay)selDay=today;
+  const cell=k=>{const I=dayInfo(p,k),fut=k>today;let cls='',top=dayShort(I.list),bot='';
+    if(I.off){cls='rst';top='Off'}
+    else if(!I.d&&k<(p.since||'')){top='–'}
+    else if(!I.tot){cls='rst'+(fut?' plan':'');top='Rest'}
+    else if(fut){cls='plan';bot=I.tot+' ex'}
+    else{cls=I.n>=I.tot?'full':I.n?'part':'';bot=I.n+'/'+I.tot;if(I.legacy&&!I.d.plan)top='✓'}
+    return'<button class="'+cls+(k===today?' today':'')+(k===selDay?' sel':'')+'" data-a="wkday" data-id="'+k+'" aria-pressed="'+(k===selDay)+'"><span>'+DAYS[wd(k)]+'</span><b>'+esc(top)+'</b><span>'+bot+'</span></button>'};
   let h='<h2 style="font-size:22px">Week '+weekNo(p,today)+'</h2>';
-  h+='<section class="card"><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(mon,i))).join('')+'</div><p class="small muted" style="margin:0">Tap a day to see what you did. Green = all done, amber = some, blue = rest, dashed = coming up. A rest day pushes the next workout to the following day, so the order never skips.</p></section>';
-  h+=dayDetail(p,selDay,today,fc);
+  h+='<section class="card"><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(mon,i))).join('')+'</div><p class="small muted" style="margin:0">Tap a day to see or fix what you did. Green = all done, amber = some, blue = rest, dashed = coming up.</p></section>';
+  h+=dayDetail(p,selDay,today);
   const wks=[],f0=mondayOf(firstDate(p));for(let w=1;w<=12;w++){const m=addDays(mon,-7*w);if(m<f0)break;wks.push(m)}
   if(wks.length)h+='<section class="card"><span class="eyebrow">Earlier weeks</span>'+wks.map(m=>'<div><div class="small muted" style="margin-bottom:4px">Week '+weekNo(p,m)+' · '+(parseKey(m).getMonth()+1)+'/'+parseKey(m).getDate()+'</div><div class="wk">'+Array.from({length:7},(_,i)=>cell(addDays(m,i))).join('')+'</div></div>').join('')+'</section>';
-  const recent=Object.values(DD).filter(x=>x.pid===p.id&&x.date<=today&&Object.values(x.checked||{}).some(Boolean)).sort((a,b)=>a.date<b.date?1:-1).slice(0,400);
+  const recent=Object.values(DD).filter(x=>x&&x.pid===p.id&&x.date<=today&&anyChecked(x)).sort((a,b)=>a.date<b.date?1:-1).slice(0,400);
   h+='<section class="card"><span class="eyebrow">History</span>'+(recent.length?'<div class="hist">'+recent.map(x=>{const I=dayInfo(p,x.date),names=I.list.filter(e=>I.doneIds.includes(e.id)).map(e=>e.name);
-    return'<div data-a="wkday" data-id="'+x.date+'" style="cursor:pointer"><span class="d">'+DAYS[parseKey(x.date).getDay()]+' '+(parseKey(x.date).getMonth()+1)+'/'+parseKey(x.date).getDate()+'</span><span class="n"><b>'+(I.rest&&!rotChecked(p,x)?'Rest day':rotChecked(p,x)?esc(I.dt.name):'Every-day exercises')+'</b> · '+I.n+' of '+I.tot+' done<br><span class="muted">'+esc(names.join(', '))+'</span>'+(x.note?'<br><span class="muted">“'+esc(x.note)+'”</span>':'')+'</span><span class="pain">'+(x.pain!=null?x.pain+'/10':'')+'</span></div>'}).join('')+'</div>':'<p class="small muted" style="margin:0">Nothing checked off yet. Every exercise you tick shows up here, even if you don’t finish the day.</p>')+'</section>';
-  const pains=Object.values(DD).filter(x=>x.pid===p.id&&x.pain!=null).sort((a,b)=>a.date<b.date?-1:1).slice(-20);
+    return'<div data-a="wkday" data-id="'+x.date+'" style="cursor:pointer"><span class="d">'+esc(fmtDay(x.date))+'</span><span class="n"><b>'+esc(I.legacy&&!x.plan?I.legacy:dayTitle(I.list))+'</b> · '+I.n+' of '+I.tot+' done<br><span class="muted">'+esc(names.join(', '))+'</span>'+(x.note?'<br><span class="muted">“'+esc(x.note)+'”</span>':'')+'</span><span class="pain">'+(x.pain!=null?x.pain+'/10':'')+'</span></div>'}).join('')+'</div>':'<p class="small muted" style="margin:0">Nothing checked off yet. Everything you tick shows up here, even if you don’t finish the day.</p>')+'</section>';
+  const pains=Object.values(DD).filter(x=>x&&x.pid===p.id&&x.pain!=null).sort((a,b)=>a.date<b.date?-1:1).slice(-20);
   h+='<section class="card"><span class="eyebrow">Pain after workouts (0–10)</span>'+chart(pains)+'</section>';
-  return h;
-}
-function editDayHtml(p,k){
-  const d=docOf(p,k),I=dayInfo(p,k),restNow=I.rest;
-  let h='<div class="row between"><h3 style="font-size:18px;margin:0">Editing</h3><button class="btn sm primary" data-a="eddone">Done</button></div>';
-  h+='<div class="f"><span class="l">What was this day?</span><div class="daytabs">'+p.dayTypes.map(x=>'<button class="daytab" data-a="edset" data-id="'+x.id+'" aria-pressed="'+(!restNow&&d&&d.dayTypeId===x.id)+'">'+dayLabel(p,x)+'<small>'+esc(x.name)+'</small></button>').join('')+'<button class="daytab" data-a="edset" data-id="rest" aria-pressed="'+restNow+'">Rest<small>day off</small></button></div></div>';
-  h+='<span class="l small muted">Tap what you did</span><div class="edl">'+I.list.map(e=>{const on=I.doneIds.includes(e.id),r=(d&&d.reps&&d.reps[e.id])||repsFor(p,e,k);return'<button data-a="edtog" data-id="'+e.id+'" aria-pressed="'+on+'"><span class="bx">✓</span><span>'+esc(e.name)+'</span><span class="dose">'+(e.sets?esc(doseText(e,r)):'')+'</span></button>'}).join('')+'</div>';
-  h+='<div class="f"><span class="l">Pain after, 0–10</span><div class="painscale">'+Array.from({length:11},(_,i)=>'<button data-a="edpain" data-id="'+i+'" aria-pressed="'+(d&&d.pain===i)+'">'+i+'</button>').join('')+'</div></div>';
-  h+='<div class="f"><label for="ed-note">Note</label><textarea id="ed-note" data-day="'+k+'">'+esc(d&&d.note||'')+'</textarea></div>';
-  return h;
-}
-function dayDetail(p,k,today,fc){
-  const dd=parseKey(k),label=DAYS[dd.getDay()]+' '+(dd.getMonth()+1)+'/'+dd.getDate()+(k===today?' · today':'');
-  let h='<section class="card" id="daydetail"><span class="eyebrow">'+label+'</span>';
-  if(k>today){const f=fc[k];
-    if(f==='rest')h+='<h3 style="font-size:18px;margin:0">Rest day</h3>'+(p.restKeepsDaily!==false&&p.daily.exercises.length?'<p class="small muted" style="margin:0">Every-day exercises only.</p>':'');
-    else if(f)h+='<h3 style="font-size:18px;margin:0">Coming up: '+dayLabel(p,f)+' · '+esc(f.name)+'</h3><ul class="dlist">'+[...p.daily.exercises,...f.exercises].map(e=>'<li class="no"><span class="mk">○</span><span>'+esc(e.name)+'</span><span class="dose">'+esc(doseText(e,repsFor(p,e,k)))+'</span></li>').join('')+'</ul>';
+  return h}
+function dayDetail(p,k,today){
+  let h='<section class="card" id="daydetail"><span class="eyebrow">'+esc(fmtDay(k))+(k===today?' · today':'')+'</span>';
+  const I=dayInfo(p,k);
+  if(k>today){h+='<h3 style="font-size:18px;margin:0">'+(I.off?'Day off':I.tot?'Coming up: '+esc(dayTitle(I.list)):'Rest day')+'</h3>';
+    if(I.tot)h+='<ul class="dlist">'+I.list.map(e=>'<li class="no"><span class="mk">○</span><span>'+esc(e.name)+(I.d&&I.d.in&&I.d.in[e.id]?' <span class="pill moved">moved</span>':'')+'</span><span class="dose">'+esc(doseText(e,repsFor(p,e,k)))+'</span></li>').join('')+'</ul>';
     return h+'</section>'}
   if(editDay===k)return h+editDayHtml(p,k)+'</section>';
-  const I=dayInfo(p,k);
-  const title=I.rest&&!(I.d&&rotChecked(p,I.d))?'Rest day':I.d&&rotChecked(p,I.d)?dayLabel(p,I.dt)+' · '+esc(I.dt.name):I.n?'Every-day exercises only':'No workout logged';
-  h+='<div class="row between"><h3 style="font-size:18px;margin:0">'+title+'</h3>'+(I.tot?'<span class="pill '+(I.n>=I.tot?'done':I.n?'due':'rest')+'">'+I.n+' of '+I.tot+' done</span>':'')+'</div>';
-  if(I.list.length&&(I.d||k===today))h+='<ul class="dlist">'+I.list.map(e=>{const on=I.doneIds.includes(e.id),r=(I.d&&I.d.reps&&I.d.reps[e.id])||repsFor(p,e,k);return'<li class="'+(on?'':'no')+'"><span class="mk">'+(on?'✓':'○')+'</span><span>'+esc(e.name)+'</span><span class="dose">'+(e.sets?esc(doseText(e,r)):'')+'</span></li>'}).join('')+'</ul>';
+  h+='<div class="row between"><h3 style="font-size:18px;margin:0">'+esc(I.off?'Day off':I.legacy&&!(I.d&&I.d.plan)?I.legacy:dayTitle(I.list))+'</h3>'+(I.tot?'<span class="pill '+(I.n>=I.tot?'done':I.n?'due':'rest')+'">'+I.n+' of '+I.tot+' done</span>':'')+'</div>';
+  if(I.list.length)h+='<ul class="dlist">'+I.list.map(e=>{const on=I.doneIds.includes(e.id),r=(I.d&&I.d.reps&&I.d.reps[e.id])||repsFor(p,e,k);return'<li class="'+(on?'':'no')+'"><span class="mk">'+(on?'✓':'○')+'</span><span>'+esc(e.name)+'</span><span class="dose">'+(e.sets?esc(doseText(e,r)):'')+'</span></li>'}).join('')+'</ul>';
   else h+='<p class="small muted" style="margin:0">Nothing checked off this day.</p>';
+  const outs=I.d&&I.d.out?Object.entries(I.d.out).filter(([,v])=>v):[];
+  if(outs.length)h+='<p class="small muted" style="margin:0">'+outs.map(([id,to])=>esc((exById(p,id)||{name:'Exercise'}).name)+(to==='skip'?' skipped':' moved to '+fmtDay(to))).join(' · ')+'</p>';
   if(I.d&&I.d.pain!=null)h+='<p class="small" style="margin:0">Pain after: <b>'+I.d.pain+'/10</b></p>';
   if(I.d&&I.d.note)h+='<p class="small muted" style="margin:0">“'+esc(I.d.note)+'”</p>';
   h+='<button class="btn" data-a="edopen" data-id="'+k+'">✎ Edit this day</button>';
-  return h+'</section>';
-}
+  return h+'</section>'}
+function editDayHtml(p,k){
+  const d=docOf(p,k),I=dayInfo(p,k);
+  const ids=new Set(I.list.map(e=>e.id)),extra=editAll?p.lib.filter(e=>!ids.has(e.id)):[];
+  const btn=e=>{const on=I.doneIds.includes(e.id),r=(d&&d.reps&&d.reps[e.id])||repsFor(p,e,k);return'<button data-a="edtog" data-id="'+e.id+'" aria-pressed="'+on+'"><span class="bx">✓</span><span>'+esc(e.name)+'</span><span class="dose">'+(e.sets?esc(doseText(e,r)):'')+'</span></button>'};
+  let h='<div class="row between"><h3 style="font-size:18px;margin:0">Editing</h3><button class="btn sm primary" data-a="eddone">Done</button></div>';
+  h+='<span class="l small muted">Tap what you did</span><div class="edl">'+[...I.list,...extra].map(btn).join('')+'</div>';
+  if(!editAll&&p.lib.some(e=>!ids.has(e.id)))h+='<button class="btn sm ghost" data-a="edall">+ I did something else too</button>';
+  h+='<div class="f"><span class="l">Pain after, 0–10</span><div class="painscale">'+Array.from({length:11},(_,i)=>'<button data-a="edpain" data-id="'+i+'" aria-pressed="'+(d&&d.pain===i)+'">'+i+'</button>').join('')+'</div></div>';
+  h+='<div class="f"><label for="ed-note">Note</label><textarea id="ed-note" data-day="'+k+'">'+esc(d&&d.note||'')+'</textarea></div>';
+  return h}
 function chart(pts){
   if(pts.length<2)return'<p class="muted small" style="margin:0">Rate two finished workouts to see a trend.</p>';
   const W=320,H=150,L=26,R=10,T=10,B=22,iw=W-L-R,ih=H-T-B,x=i=>L+i*iw/(pts.length-1),y=v=>T+ih-v/10*ih;
@@ -519,48 +552,47 @@ function chart(pts){
   s+='<polygon class="ar" points="'+x(0)+','+y(0)+' '+line+' '+x(pts.length-1)+','+y(0)+'"/><polyline class="ln" points="'+line+'"/>';
   pts.forEach((p,i)=>{const e=i===pts.length-1;s+='<circle class="'+(e?'end':'pt')+'" cx="'+x(i)+'" cy="'+y(p.pain)+'" r="'+(e?5:3.5)+'"/>'});
   const f=parseKey(pts[0].date),l=parseKey(pts[pts.length-1].date);
-  return s+'<text x="'+L+'" y="'+(H-5)+'">'+(f.getMonth()+1)+'/'+f.getDate()+'</text><text x="'+(W-R)+'" y="'+(H-5)+'" text-anchor="end">'+(l.getMonth()+1)+'/'+l.getDate()+'</text></svg>';
-}
+  return s+'<text x="'+L+'" y="'+(H-5)+'">'+(f.getMonth()+1)+'/'+f.getDate()+'</text><text x="'+(W-R)+'" y="'+(H-5)+'" text-anchor="end">'+(l.getMonth()+1)+'/'+l.getDate()+'</text></svg>'}
 function vProgram(){
   const p=prof(),today=dayKey();
-  if(!progTab||!getList(p,progTab))progTab=planFor(p,today).id;
-  const dt=getList(p,progTab),wk=weekNo(p,today);
-  let h='<div class="row between"><h2 style="font-size:22px">'+esc(p.name)+'’s program</h2><button class="btn sm" data-a="editprof">Settings</button></div>';
-  h+='<p class="small muted" style="margin:0">Every-day exercises plus a '+p.dayTypes.length+'-day rotation, repeating. Week '+wk+'. Reps go up by '+(p.increment||0)+' after every '+EVERY+' times you do an exercise.</p>';
-  h+='<button class="btn" data-a="presets">Load a ready-made plan</button>';
-  h+='<div class="daytabs">'+[p.daily,...p.dayTypes].map(x=>'<button class="daytab" data-a="ptab" data-id="'+x.id+'" aria-pressed="'+(x.id===dt.id)+'">'+dayLabel(p,x)+'<small>'+(x.id===DAILY?'':esc(x.name)+' · ')+x.exercises.length+' exercises</small></button>').join('')+'<button class="daytab" data-a="addday">+ Day<small>add to rotation</small></button></div>';
-  if(dt.id===DAILY)h+='<p class="small muted" style="margin:0">These show up on Today every day, above the rotation day.</p>';
-  else h+='<section class="card"><div class="f"><label for="dt-name">'+dayLabel(p,dt)+' name</label><input id="dt-name" value="'+esc(dt.name)+'" data-dt="'+dt.id+'"></div></section>';
-  if(!dt.exercises.length)h+='<div class="card empty">No exercises in '+esc(dt.name)+' yet.</div>';
-  h+='<div class="exlist">'+dt.exercises.map((ex,i)=>{const r=repsFor(p,ex,today);return'<article class="card ex"><div style="min-width:0;display:flex;flex-direction:column;gap:4px"><h3>'+esc(ex.name)+'</h3><span class="dose">'+esc(doseText(ex,r))+' · rest '+ex.restSec+' s</span><span class="small muted">'+(ex.progress===false?(ex.unit==='min'?'Minutes stay fixed':'Reps stay fixed'):'Started at '+ex.reps+(ex.unit==='min'?' min':' reps')+' · done '+timesDone(p,ex.id,today+'~')+' times · '+progressNote(p,ex,today+'~'))+'</span><div class="row">'+bandHtml(ex.band)+(ex.videoUrl?'<span class="tag">▶ Video</span>':demoFor(ex)?'<span class="tag">▶ Demo animation</span>':ex.videoLink?'<span class="tag">↗ Video link</span>':'')+'</div></div><div class="tools"><button class="iconbtn" aria-label="Move up" data-a="up" data-id="'+ex.id+'" '+(i?'':'disabled')+'>↑</button><button class="iconbtn" aria-label="Move down" data-a="down" data-id="'+ex.id+'" '+(i<dt.exercises.length-1?'':'disabled')+'>↓</button></div>'+(ex.notes?'<p class="notes">'+esc(ex.notes)+'</p>':'')+'<div style="grid-column:1/-1"><button class="btn sm" data-a="exedit" data-id="'+ex.id+'">Edit</button></div></article>'}).join('')+'</div>';
-  h+='<button class="btn primary big" data-a="exadd">+ Add exercise to '+esc(dt.name)+'</button>';
-  if(dt.id!==DAILY&&p.dayTypes.length>1)h+='<button class="btn danger" data-a="delday">'+(MD&&MD.delDay===dt.id?'Tap again — removes '+esc(dt.name)+' and its exercises':'Remove '+dayLabel(p,dt)+' from rotation')+'</button>';
-  return h;
-}
+  if(progTab===null)progTab=String(wd(today));
+  let h='<div class="row between"><h2 style="font-size:22px">'+esc(p.name)+'’s week</h2><button class="btn sm" data-a="editprof">Settings</button></div>';
+  h+='<section class="card"><span class="l small muted">Workout days</span><div class="days">'+WEEK_ORDER.map(i=>'<label><input type="checkbox" data-a="tday" data-id="'+i+'" id="td'+i+'" '+((p.trainDays||[]).includes(i)?'checked':'')+'>'+DAYS[i]+'</label>').join('')+'</div>';
+  h+='<p class="small muted" style="margin:0">Legs, hips & core one day, shoulders & arms the next, so each muscle group rests at least a day between sessions. Reps go up '+(p.increment||0)+' every week (stretches stay the same).</p>';
+  h+='<div class="grid2"><button class="btn" data-a="rebuild">'+(p.auto?'↻ Rebuild my week':'↻ Rebuild automatically')+'</button><button class="btn" data-a="presets">Ready-made plans</button></div>';
+  if(!p.auto)h+='<p class="small muted" style="margin:0">You’ve arranged this week yourself. Rebuilding replaces your arrangement.</p>';
+  const b2b=backToBack(p);if(b2b.length)h+='<p class="small" style="margin:0;color:var(--warn)"><b>Heads up:</b> '+b2b.map(x=>GROUPS[x.g].name+' on '+DAYS[x.d]+' and '+DAYS[x.n]).join('; ')+' back to back. Those muscles won’t get a rest day.</p>';
+  h+='</section>';
+  h+='<div class="daytabs">'+WEEK_ORDER.map(i=>{const l=(p.week[i]||[]).map(id=>exById(p,id)).filter(Boolean);return'<button class="daytab" data-a="ptab" data-id="'+i+'" aria-pressed="'+(progTab===String(i))+'">'+DAYS[i]+'<small>'+(l.length?esc(dayShort(l))+' · '+l.length:'Rest')+'</small></button>'}).join('')+'<button class="daytab" data-a="ptab" data-id="all" aria-pressed="'+(progTab==='all')+'">All<small>'+p.lib.length+' exercises</small></button></div>';
+  if(progTab==='all'){
+    if(!p.lib.length)h+='<div class="card empty">No exercises yet.</div>';
+    for(const g of Object.keys(GROUPS)){const l=p.lib.filter(e=>e.group===g);if(!l.length)continue;
+      h+='<span class="eyebrow">'+GROUPS[g].name+'</span><div class="exlist">'+l.map(ex=>'<article class="card ex"><div style="min-width:0;display:flex;flex-direction:column;gap:4px"><h3>'+esc(ex.name)+'</h3><span class="dose">'+esc(doseText(ex,repsFor(p,ex,today)))+'</span><span class="small muted">'+(scheduleDaysOf(p,ex.id).map(d=>DAYS[d]).join(', ')||'Not scheduled')+' · '+(ex.progress===false?'stays the same':'started at '+ex.reps+(ex.unit==='min'?' min':' reps')+', +'+(p.increment||0)+'/week')+'</span></div><div class="tools"></div><div style="grid-column:1/-1"><button class="btn sm" data-a="exedit" data-id="'+ex.id+'">Edit</button></div></article>').join('')+'</div>'}
+    h+='<button class="btn primary big" data-a="exadd">+ New exercise</button>';
+    return h}
+  const di=+progTab,ids=p.week[di]||[],list=ids.map(id=>exById(p,id)).filter(Boolean);
+  h+='<section class="card"><span class="eyebrow">'+DAYS[di]+'</span><h3 style="font-size:18px;margin:0">'+esc(dayTitle(list))+'</h3>'+(list.length?'':'<p class="small muted" style="margin:0">Nothing scheduled. Add exercises below or leave it as a rest day.</p>')+'</section>';
+  h+='<div class="exlist">'+list.map((ex,i)=>'<article class="card ex"><div style="min-width:0;display:flex;flex-direction:column;gap:4px"><h3>'+esc(ex.name)+'</h3><span class="dose">'+esc(doseText(ex,repsFor(p,ex,today)))+'</span><div class="row">'+grpTag(ex)+bandHtml(ex.band)+(ex.videoUrl?'<span class="tag">▶ Video</span>':demoFor(ex)?'<span class="tag">▶ Demo</span>':'')+'</div></div><div class="tools"><button class="iconbtn" aria-label="Move up" data-a="up" data-id="'+ex.id+'" '+(i?'':'disabled')+'>↑</button><button class="iconbtn" aria-label="Move down" data-a="down" data-id="'+ex.id+'" '+(i<list.length-1?'':'disabled')+'>↓</button></div><div class="row" style="grid-column:1/-1"><button class="btn sm" data-a="exedit" data-id="'+ex.id+'">Edit</button><button class="btn sm ghost" data-a="dayrm" data-id="'+ex.id+'">Remove from '+DAYS[di]+'</button></div></article>').join('')+'</div>';
+  h+='<button class="btn primary big" data-a="dayadd">+ Add exercise to '+DAYS[di]+'</button>';
+  return h}
 
-/* ---------- guided timer (one exercise) ---------- */
+/* ============ guided timer ============ */
 let tickI=null,actx=null,wake=null,lastBeep=-1;
 function beep(f,d){try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=f||880;o.connect(g);g.connect(actx.destination);g.gain.setValueAtTime(.25,actx.currentTime);g.gain.exponentialRampToValueAtTime(.001,actx.currentTime+(d||.15));o.start();o.stop(actx.currentTime+(d||.15))}catch(e){}try{navigator.vibrate&&navigator.vibrate(d>.2?200:60)}catch(e){}}
 async function lockScreen(){try{wake=await navigator.wakeLock.request('screen')}catch(e){}}
-function startTimer(exId){
-  const p=prof(),ex=allExercises(p).find(e=>e.id===exId);if(!ex)return;
-  S={exId,ex:{...clone(ex),reps:repsFor(p,ex,dayKey())},set:1,side:0,rep:0,phase:'ready',until:0,left:0,paused:false};
-  beep(660,.05);lockScreen();tickI=setInterval(tick,200);render();
-}
+function startTimer(exId){const p=prof(),ex=exById(p,exId);if(!ex)return;
+  S={exId,ex:{...clone(ex),reps:repsFor(p,ex,dayKey())},set:1,side:0,rep:0,phase:'ready',until:0,left:0,paused:false};beep(660,.05);lockScreen();tickI=setInterval(tick,200);render()}
 function tick(){if(!S||S.paused||!S.until)return;const rem=S.until-Date.now(),sec=Math.ceil(rem/1000);if(rem<=0){S.until=0;lastBeep=-1;timerEnd();return}if(sec<=3&&sec!==lastBeep&&(S.phase==='hold'||S.phase==='rest')){lastBeep=sec;beep(520,.06)}renderDyn()}
 function timerEnd(){const ex=S.ex;if(S.phase==='hold'){beep(990,.3);S.rep++;if(S.rep>=ex.reps)sideDone();else{S.phase='relax';S.until=Date.now()+3000}}else if(S.phase==='relax'){S.phase='hold';S.until=Date.now()+ex.holdSec*1000}else if(S.phase==='rest'){beep(880,.3);S.phase='ready'}if(S)renderDyn()}
 function sideDone(){if(S.side<sidesOf(S.ex).length-1){S.side++;S.rep=0;S.phase='ready';S.until=0;beep(770,.2)}else setDone()}
 function setDone(){if(S.set<S.ex.sets){S.set++;S.side=0;S.rep=0;if(S.ex.restSec>0){S.phase='rest';S.until=Date.now()+S.ex.restSec*1000}else S.phase='ready'}else finishTimer(true)}
 function finishTimer(complete){const id=S.exId,reps=S.ex.reps;clearInterval(tickI);tickI=null;try{wake&&wake.release()}catch(e){}wake=null;S=null;if(complete){beep(1040,.4);setCheck(id,true,reps)}render()}
-function renderSession(){
-  const ex=S.ex;
+function renderSession(){const ex=S.ex;
   let h='<div class="sess"><div class="bar"><button class="btn sm ghost" data-a="squit">✕ Close</button><span class="small muted">Guided timer</span><button class="btn sm ghost" data-a="sall">Mark done</button></div>';
   h+='<div><h2 style="font-size:26px">'+esc(ex.name)+'</h2><div class="row"><span class="dose">'+esc(doseText(ex,ex.reps))+'</span>'+bandHtml(ex.band)+'</div></div>';
   const v=vidSrc(ex);if(v)h+='<video class="vid" src="'+esc(v)+'" controls loop muted playsinline autoplay preload="auto"></video>';else if(ex.videoLink)h+='<a class="btn" href="'+esc(ex.videoLink)+'" target="_blank" rel="noopener">▶ Watch video (new tab)</a>';
   if(ex.notes)h+='<p class="muted small" style="margin:0;white-space:pre-wrap">'+esc(ex.notes)+'</p>';
-  h+='<div id="sdyn" class="card"></div></div>';
-  $('main').innerHTML=h;window.scrollTo(0,0);renderDyn();
-}
+  h+='<div id="sdyn" class="card"></div></div>';$('main').innerHTML=h;window.scrollTo(0,0);renderDyn()}
 function renderDyn(){
   const el=$('sdyn');if(!el||!S)return;const ex=S.ex,sl=sidesOf(ex)[S.side],head='Set '+S.set+' of '+ex.sets+(sl?' · '+sl:'');
   const rem=S.until?Math.max(0,S.until-Date.now()):S.left,secs=Math.ceil(rem/1000);let h='';
@@ -569,157 +601,150 @@ function renderDyn(){
     h='<div class="counter '+(S.phase==='hold'?'hold':'')+'"><span class="lbl">'+esc(head)+' · rep '+Math.min(S.rep+1,ex.reps)+' of '+ex.reps+'</span>'+(run?'<span class="phase">'+(S.phase==='hold'?'Hold':'Relax')+'</span><span class="big">'+secs+'<small>s</small></span><div class="tbar"><i style="width:'+(100-rem/tot*100)+'%"></i></div>':'<span class="big">'+S.rep+'<small>/'+ex.reps+'</small></span><span class="lbl">Holds count down on their own, 3 s relax between reps</span>')+'</div>'+
     (run?'<div class="grid2"><button class="btn" data-a="spause">'+(S.paused?'Resume':'Pause')+'</button><button class="btn" data-a="ssetdone">Set done</button></div>':'<button class="btn primary tap" data-a="shold">'+(sl&&S.side>0&&S.rep===0?'Start '+esc(sl.toLowerCase()):'Start holds')+'</button>')}
   else h='<div class="counter"><span class="lbl">'+esc(head)+'</span><span class="big">'+S.rep+'<small>/'+ex.reps+'</small></span></div><button class="btn primary tap" data-a="srep">Tap each rep</button><div class="grid2"><button class="btn" data-a="sundo" '+(S.rep?'':'disabled')+'>− Undo rep</button><button class="btn" data-a="ssetdone">Set done</button></div>';
-  el.innerHTML=h;
-}
+  el.innerHTML=h}
 
-/* ---------- check-off ---------- */
-function setCheck(exId,val,reps){
-  const p=prof(),today=dayKey(),dt=planFor(p,today),d=ensureDoc(p,today,dt);
-  if(!d.pick&&!rotChecked(p,d))d.dayTypeId=dt.id;
-  d.checked={...d.checked,[exId]:!!val};d.reps={...(d.reps||{})};{const ex=allExercises(p).find(e=>e.id===exId);if(ex)d.names={...(d.names||{}),[exId]:ex.name}}
+/* ============ check-off ============ */
+function setCheck(exId,val,reps){const p=prof(),today=dayKey(),d=ensureDoc(p,today),ex=exById(p,exId);
+  d.checked={...d.checked,[exId]:!!val};if(ex)d.names[exId]=ex.name;
   if(val)d.reps[exId]=reps;else delete d.reps[exId];
-  if(val&&[...missedFor(p,today).map(m=>m.ex),...shownList(p,dt,today)].every(e=>d.checked[e.id]))beep(1040,.3);
-  saveDay(docKey(p,today));
-}
+  if(val&&[...missedFor(p,today).map(m=>m.ex),...planned(p,today)].every(e=>d.checked[e.id]))beep(1040,.3);
+  saveDay(docKey(p,today))}
 
-/* ---------- modals ---------- */
+/* ============ sheets ============ */
 function openModal(html){const m=$('modal');m.innerHTML='<div class="ov" data-a="mbg"><div class="sheet" role="dialog" aria-modal="true">'+html+'</div></div>';m.hidden=false}
 function closeModal(){if(MD&&MD.kind==='ex')for(const id of MD.cancelUploads||[])assets&&assets.delete(id).catch(()=>{});MD=null;$('modal').hidden=true;$('modal').innerHTML=''}
+function moveForm(){const p=prof(),ex=exById(p,MD.exId),opts=moveOptions(p,ex,MD.from);
+  let h='<div class="row between"><h2 style="font-size:22px">Move '+esc(ex.name)+'</h2><button class="btn sm ghost" data-a="mclose">Cancel</button></div>';
+  h+='<p class="small muted" style="margin:0">Pick a day after your '+esc(GROUPS[ex.group].name.toLowerCase())+' have had time to recover. The recommended day doesn’t work the same muscles that day or the day before.</p>';
+  h+='<div class="edl">'+opts.map(o=>{const why=o.rec?'<span class="pill done">Recommended</span>':o.same?'<span class="pill due">'+GROUPS[ex.group].short+' already that day</span>':o.before?'<span class="pill due">'+GROUPS[ex.group].short+' the day before</span>':'';
+    return'<button data-a="moveto" data-id="'+o.k+'"><span class="bx" style="color:var(--muted)">→</span><span><b>'+esc(fmtDay(o.k))+'</b> '+why+'</span><span class="dose">'+esc(o.list.length?dayTitle(o.list)+' · '+o.list.length+' exercises':'Rest day')+'</span></button>'}).join('')+'</div>';
+  h+='<button class="btn danger" data-a="moveskip">Skip it this week</button>';
+  return h}
 function exForm(){
   const e=MD.ex,p=prof();
   let h='<div class="row between"><h2 style="font-size:22px">'+(MD.isNew?'New exercise':'Edit exercise')+'</h2><button class="btn sm ghost" data-a="mclose">Cancel</button></div>';
   h+='<div class="f"><label for="f-name">Name</label><input id="f-name" value="'+esc(e.name)+'" placeholder="Straight leg raise"></div>';
+  h+='<div class="f"><label for="f-group">Muscle group</label><select id="f-group">'+Object.entries(GROUPS).map(([k,g])=>'<option value="'+k+'" '+(e.group===k?'selected':'')+'>'+g.name+'</option>').join('')+'</select></div>';
+  h+='<div class="f"><span class="l">Days</span><div class="days">'+WEEK_ORDER.map(i=>'<label><input type="checkbox" id="f-d'+i+'" '+((MD.days||[]).includes(i)?'checked':'')+'>'+DAYS[i]+'</label>').join('')+'</div><span class="small muted">'+(MD.isNew?'Leave empty and the app picks the right days for its muscle group.':'')+'</span></div>';
   h+='<div class="grid4">'+[['f-sets','Sets',e.sets],['f-reps',e.unit==='min'?'Week 1 minutes':'Week 1 reps',e.reps],['f-hold','Hold (s)',e.holdSec],['f-rest','Rest (s)',e.restSec]].map(([id,l,v])=>'<div class="f"><label for="'+id+'">'+l+'</label><input id="'+id+'" type="number" inputmode="numeric" min="0" max="999" value="'+v+'"></div>').join('')+'</div>';
   h+='<div class="f"><label for="f-unit">Count</label><select id="f-unit"><option value="" '+(e.unit!=='min'?'selected':'')+'>Reps</option><option value="min" '+(e.unit==='min'?'selected':'')+'>Minutes (walking, bike…)</option></select></div>';
-  h+='<label class="check2"><input type="checkbox" id="f-prog" '+(e.progress!==false?'checked':'')+'> Add '+(p.increment||0)+(e.unit==='min'?' minutes':' reps')+' after every '+EVERY+' times you do it</label>';
+  h+='<label class="check2"><input type="checkbox" id="f-prog" '+(e.progress!==false?'checked':'')+'> Add '+(p.increment||0)+(e.unit==='min'?' minutes':' reps')+' every week</label>';
   h+='<div class="f"><label for="f-side">Side</label><select id="f-side">'+Object.entries({both:'Both / not sided',each:'Each side (left then right)',left:'Left only',right:'Right only'}).map(([k,v])=>'<option value="'+k+'" '+(e.side===k?'selected':'')+'>'+v+'</option>').join('')+'</select></div>';
   h+='<div class="f"><span class="l">Resistance band</span><div class="bands">'+Object.entries(BANDS).map(([k,[n,c]])=>'<label><input type="radio" name="f-band" value="'+k+'" '+(e.band===k?'checked':'')+'>'+(c?'<span class="sw" style="background:'+c+'"></span>':'')+n+'</label>').join('')+'</div></div>';
   h+='<div class="f"><label for="f-notes">Cues and notes</label><textarea id="f-notes" placeholder="Keep back flat, slow on the way down">'+esc(e.notes)+'</textarea></div>';
   h+='<div class="vbox"><span class="eyebrow">Video</span>';
   if(e.videoUrl)h+='<video class="vid" src="'+esc(e.videoUrl)+'" controls muted playsinline preload="metadata"></video><button class="btn sm danger" data-a="vremove">Remove video</button>';
-  else{if(assets)h+='<label class="btn" for="f-vid">'+(MD.uploading?'Uploading…':'⬆ Upload or record video')+'</label><input id="f-vid" type="file" accept="video/*" hidden '+(MD.uploading?'disabled':'')+'><p class="small muted" style="margin:0">The video stays on this phone. Short clips (under a minute) work best.</p>';
+  else{if(assets)h+='<label class="btn" for="f-vid">'+(MD.uploading?'Uploading…':'⬆ Upload or record video')+'</label><input id="f-vid" type="file" accept="video/*" hidden '+(MD.uploading?'disabled':'')+'><p class="small muted" style="margin:0">The video stays on this phone. Short clips work best.</p>';
     const dm=demoFor(e);h+='<div class="f"><label for="f-demo">Demo animation</label><select id="f-demo"><option value="">Auto — match by name'+(dm&&!e.demo?' ('+esc(dm.name)+')':'')+'</option>'+Object.entries(DEMOS).map(([k,d])=>'<option value="'+k+'" '+(e.demo===k?'selected':'')+'>'+esc(d.name)+'</option>').join('')+'<option value="none" '+(e.demo==='none'?'selected':'')+'>None</option></select></div>';
     if(dm)h+='<video class="vid" src="'+esc(dm.url)+'" controls loop muted playsinline autoplay preload="metadata"></video>'}
   h+='<span class="err">'+esc(MD.verr||'')+'</span><div class="f"><label for="f-link">Or a video link (YouTube, clinic portal)</label><input id="f-link" type="url" inputmode="url" value="'+esc(e.videoLink)+'" placeholder="https://"></div></div>';
   h+='<button class="btn primary big" data-a="exsave">Save exercise</button>';
   if(!MD.isNew)h+='<button class="btn danger" data-a="exdel">'+(MD.confirmDel?'Tap again to delete':'Delete exercise')+'</button>';
-  return h;
-}
+  return h}
 function readExForm(){
   const n=(id,d)=>{const v=parseInt($(id).value,10);return isNaN(v)?d:Math.max(0,Math.min(999,v))},e=MD.ex;
-  e.name=$('f-name').value.trim();e.sets=Math.max(1,n('f-sets',1));e.reps=Math.max(1,n('f-reps',1));e.holdSec=n('f-hold',0);e.restSec=n('f-rest',0);e.progress=$('f-prog').checked;e.unit=$('f-unit').value;
+  e.name=$('f-name').value.trim();e.group=$('f-group').value;e.sets=Math.max(1,n('f-sets',1));e.reps=Math.max(1,n('f-reps',1));e.holdSec=n('f-hold',0);e.restSec=n('f-rest',0);e.progress=$('f-prog').checked;e.unit=$('f-unit').value;
   e.side=$('f-side').value;const b=document.querySelector('input[name="f-band"]:checked');e.band=b?b.value:'';e.notes=$('f-notes').value;if($('f-demo'))e.demo=$('f-demo').value;
   let l=$('f-link').value.trim();if(l&&!/^https?:\/\//i.test(l))l='https://'+l;e.videoLink=l;
-}
+  MD.days=WEEK_ORDER.filter(i=>$('f-d'+i)&&$('f-d'+i).checked)}
+function pickForm(){const p=prof(),di=MD.day,on=new Set(p.week[di]||[]),l=p.lib.filter(e=>!on.has(e.id));
+  let h='<div class="row between"><h2 style="font-size:22px">Add to '+DAYS[di]+'</h2><button class="btn sm ghost" data-a="mclose">Cancel</button></div>';
+  h+='<button class="btn primary" data-a="picknew">+ New exercise</button>';
+  if(l.length)h+='<div class="edl">'+l.map(e=>'<button data-a="pick" data-id="'+e.id+'"><span class="bx" style="color:var(--muted)">+</span><span>'+esc(e.name)+' '+grpTag(e)+'</span><span class="dose">'+esc(scheduleDaysOf(p,e.id).map(d=>DAYS[d]).join(', ')||'not scheduled')+'</span></button>').join('')+'</div>';
+  return h}
 function presetList(){
   let h='<div class="row between"><h2 style="font-size:22px">Ready-made plans</h2><button class="btn sm ghost" data-a="mclose">Cancel</button></div>';
-  h+=Object.entries(PRESETS).map(([k,pr])=>{const n=(pr.daily||[]).length+(pr.day2||[]).length+(pr.day3||[]).length;return'<button class="btn" style="justify-content:flex-start;text-align:left;flex-direction:column;align-items:flex-start;gap:2px" data-a="presetpick" data-id="'+k+'">'+esc(pr.name)+'<span class="small muted" style="font-weight:400">'+n+' exercises · '+esc(pr.about)+'</span></button>'}).join('');
-  return h;
-}
+  h+=Object.entries(PRESETS).map(([k,pr])=>'<button class="btn" style="justify-content:flex-start;text-align:left;flex-direction:column;align-items:flex-start;gap:2px" data-a="presetpick" data-id="'+k+'">'+esc(pr.name)+'<span class="small muted" style="font-weight:400">'+pr.items.length+' exercises · '+esc(pr.about)+'</span></button>').join('');
+  return h}
 function presetForm(){
-  const pr=PRESETS[MD.key],p=prof(),loaded=[p.daily,...p.dayTypes].some(l=>l.exercises.some(x=>x.preset===MD.key));
-  const li=a=>'<ul style="margin:0;padding-left:20px">'+a.map(x=>'<li>'+esc(x.name)+' <span class="muted small">'+esc(doseText(newEx(x),x.reps))+'</span></li>').join('')+'</ul>';
+  const pr=PRESETS[MD.key],p=prof(),loaded=p.lib.some(x=>x.preset===MD.key);
   let h='<div class="row between"><h2 style="font-size:22px">'+esc(pr.name)+'</h2><button class="btn sm ghost" data-a="mclose">Cancel</button></div>';
   h+='<p style="margin:0">'+esc(pr.about)+'</p>';
   if(pr.flags)h+='<div class="banner" style="background:var(--warn-soft)"><p><b>Red flags.</b> '+esc(pr.flags)+'</p></div>';
   h+='<p class="small" style="margin:0"><b>The one rule:</b> '+esc(pr.rule)+'</p>';
-  if(pr.daily)h+='<span class="eyebrow">Every day ('+pr.daily.length+')</span>'+li(pr.daily);
-  [['day2',1],['day3',2]].forEach(([k,i])=>{if(pr[k])h+='<span class="eyebrow">'+esc(p.dayTypes[i]?dayLabel(p,p.dayTypes[i])+' · '+p.dayTypes[i].name:'Day '+(i+1))+' ('+pr[k].length+')</span>'+li(pr[k])});
-  h+='<p class="small muted" style="margin:0">'+esc(pr.avoid)+(MD.key==='lumbar'?' Rep increases start off on all of these; turn them on per exercise when the core work feels easy. Not a substitute for a physical therapist: if the leg pain isn’t clearly better in 4–6 weeks, get it checked.':' Reps go up after every '+EVERY+' times you do each one.')+'</p>';
-  h+='<p class="small muted" style="margin:0">'+(loaded?'This plan is already loaded. Loading again resets its exercises to the plan (your other exercises stay).':'The example exercises will be removed. Your own exercises stay.')+'</p>';
-  h+='<button class="btn primary big" data-a="presetload">'+(loaded?'Reload plan for '+esc(p.name):'Load plan for '+esc(p.name))+'</button>';
-  return h;
-}
-function loadPreset(p,key){
-  const pr=PRESETS[key],drop=x=>x.preset===key||/^Example —/.test(x.notes||'');
-  for(const l of [p.daily,...p.dayTypes])l.exercises=l.exercises.filter(x=>{const d=drop(x);if(d&&x.videoId)assets&&assets.delete(x.videoId).catch(()=>{});return!d});
-  const names=['Legs & hips','Spine & abs','Arms'],need=pr.day3?3:pr.day2?2:1;
-  while(p.dayTypes.length<need)p.dayTypes.push({id:rid(),name:names[p.dayTypes.length]||'Day '+(p.dayTypes.length+1),exercises:[]});
-  const mk=x=>newEx({side:'both',...x,progress:x.progress===true,preset:key});
-  if(pr.daily)p.daily.exercises=[...pr.daily.map(mk),...p.daily.exercises];
-  if(pr.day2)p.dayTypes[1].exercises=[...pr.day2.map(mk),...p.dayTypes[1].exercises];
-  if(pr.day3)p.dayTypes[2].exercises=[...pr.day3.map(mk),...p.dayTypes[2].exercises];
-}
+  h+='<ul style="margin:0;padding-left:20px">'+pr.items.map(x=>'<li>'+esc(x.name)+' <span class="muted small">'+esc(GROUPS[x.group].short)+' · '+esc(doseText(newEx(x),x.reps))+'</span></li>').join('')+'</ul>';
+  h+='<p class="small muted" style="margin:0">'+esc(pr.avoid)+' '+(loaded?'Already loaded: loading again resets these exercises (your others stay).':'Exercises you already have with the same name are kept, not doubled.')+(p.auto?' Your week is rebuilt to fit them in.':' They’re added to the right days without changing your arrangement.')+'</p>';
+  h+='<button class="btn primary big" data-a="presetload">'+(loaded?'Reload for ':'Add for ')+esc(p.name)+'</button>';
+  return h}
+function loadPreset(p,key){const pr=PRESETS[key];
+  for(const x of p.lib.filter(x=>x.preset===key||/^Example —/.test(x.notes||'')))removeEx(p,x.id);
+  const have=new Set(p.lib.map(e=>e.name.toLowerCase()));
+  for(const it of pr.items){if(have.has(it.name.toLowerCase()))continue;const e=newEx({side:'both',...it,preset:key});p.lib.push(e);if(!p.auto)placeOne(p,e)}
+  if(p.auto)buildWeek(p)}
+function removeEx(p,id){const e=exById(p,id);if(e&&e.videoId)assets&&assets.delete(e.videoId).catch(()=>{});p.lib=p.lib.filter(x=>x.id!==id);for(const d in p.week)p.week[d]=(p.week[d]||[]).filter(x=>x!==id)}
 function profForm(){
   const p=MD.p,wk=weekNo(p,dayKey());
   let h='<div class="row between"><h2 style="font-size:22px">'+(MD.isNew?'Add person':'Settings')+'</h2><button class="btn sm ghost" data-a="mclose">Cancel</button></div>';
   h+='<div class="f"><label for="p-name">Name</label><input id="p-name" value="'+esc(p.name)+'" placeholder="Dad"></div>';
-  h+='<div class="grid2"><div class="f"><label for="p-inc">Reps added after every 7 times</label><input id="p-inc" type="number" inputmode="numeric" min="0" max="50" value="'+(p.increment??2)+'"></div><div class="f"><label for="p-wk">This is program week</label><input id="p-wk" type="number" inputmode="numeric" min="1" max="520" value="'+wk+'"></div></div>';
-  const rd=p.restDays||[];
-  h+='<div class="f"><span class="l">Rest days every week</span><div class="days">'+[1,2,3,4,5,6,0].map(i=>'<label><input type="checkbox" id="p-r'+i+'" '+(rd.includes(i)?'checked':'')+'>'+DAYS[i]+'</label>').join('')+'</div></div>';
-  h+='<label class="check2"><input type="checkbox" id="p-rkd" '+(p.restKeepsDaily!==false?'checked':'')+'> Still do the Every-day exercises on rest days</label>';
-  h+='<p class="small muted" style="margin:0">On a rest day the rotation waits: the next workout picks up where you left off, and your streak doesn’t break. You can also tap “Make today a rest day” on Today.</p>';
+  h+='<div class="grid2"><div class="f"><label for="p-inc">Reps added each week</label><input id="p-inc" type="number" inputmode="numeric" min="0" max="50" value="'+(p.increment??2)+'"></div><div class="f"><label for="p-wk">This is program week</label><input id="p-wk" type="number" inputmode="numeric" min="1" max="520" value="'+wk+'"></div></div>';
+  h+='<p class="small muted" style="margin:0">Week 1 is the reps you entered for each exercise. Set the week back to start the increases over.</p>';
   h+='<div class="f"><label for="p-time">Daily reminder time</label><input id="p-time" type="time" value="'+esc(p.reminder&&p.reminder.time||'')+'"></div><p class="small muted" style="margin:0">This page can’t ring your phone. Set a phone alarm for this time.</p>';
   h+='<button class="btn primary big" data-a="psave">Save</button>';
-  if(!MD.isNew)h+='<div class="vbox"><span class="eyebrow">Backup</span><p class="small muted" style="margin:0">Your program and check-offs are stored on this phone only. Save a backup now and then (e-mail it to yourself or keep it in Files) so clearing the browser or a new phone doesn’t lose them. Uploaded videos aren’t in the backup.'+(ST.lastBackup?' Last backup: '+ST.lastBackup+'.':' No backup yet.')+'</p><div class="grid2"><button class="btn" data-a="backup">Save backup</button><label class="btn" for="f-restore">Restore backup</label></div><input id="f-restore" type="file" accept=".json,application/json" hidden><span class="err">'+esc(MD.berr||'')+'</span>'+(MD.bok?'<span class="small up">'+esc(MD.bok)+'</span>':'')+'</div>';
+  if(!MD.isNew)h+='<div class="vbox"><span class="eyebrow">Backup</span><p class="small muted" style="margin:0">Your program and check-offs are stored on this phone only. Save a backup now and then (e-mail it to yourself or keep it in Files). Uploaded videos aren’t in the backup.'+(ST.lastBackup?' Last backup: '+ST.lastBackup+'.':' No backup yet.')+'</p><div class="grid2"><button class="btn" data-a="backup">Save backup</button><label class="btn" for="f-restore">Restore backup</label></div><input id="f-restore" type="file" accept=".json,application/json" hidden><span class="err">'+esc(MD.berr||'')+'</span>'+(MD.bok?'<span class="small up">'+esc(MD.bok)+'</span>':'')+'</div>';
   if(!MD.isNew&&ST.profiles.length>1)h+='<button class="btn danger" data-a="pdel">'+(MD.confirmDel?'Tap again — deletes '+esc(p.name)+'’s program':'Remove person')+'</button>';
-  return h;
-}
+  return h}
 
-/* ---------- actions ---------- */
+/* ============ actions ============ */
 document.addEventListener('click',e=>{
   const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,id=b.dataset.id;
   if(a==='mbg'&&e.target!==b)return;
+  if(a==='tday')return; // handled on change
   const p=prof(),today=dayKey();
-  const curDt=()=>getList(p,progTab)||p.dayTypes[0];
   switch(a){
-    case'nav':view=id;editDay=null;if(MD&&MD.delDay)MD=null;render();window.scrollTo(0,0);break;
-    case'prof':selDay=null;editDay=null;ST.activeId=id;progTab=null;openVid.clear();save();render();break;
-    case'skipmiss':{const d=ensureDoc(p,today,planFor(p,today));d.skip={...(d.skip||{}),[id]:true};saveDay(docKey(p,today));render();break}
-    case'iosok':iosHint=true;try{sessionStorage.setItem('ptc-ios','1')}catch(e){}render();break;
+    case'nav':view=id;editDay=null;render();window.scrollTo(0,0);break;
+    case'prof':selDay=null;editDay=null;progTab=null;ST.activeId=id;openVid.clear();save();render();break;
     case'dismiss':ST.exampleBanner=false;save();render();break;
-    case'goprog':progTab=id;view='program';render();break;
-    case'setday':{const dt=p.dayTypes[dtIndex(p,id)];if(!dt)break;const cur=planFor(p,today),d=ensureDoc(p,today,cur);if(cur.id===id&&d.pick)break;
-      const old=p.dayTypes[dtIndex(p,d.dayTypeId)];d.checked={...d.checked};d.reps={...(d.reps||{})};
-      if(old&&old.id!==id)for(const e of old.exercises){delete d.checked[e.id];delete d.reps[e.id]}
-      d.dayTypeId=id;d.pick=true;saveDay(docKey(p,today));render();break}
-    case'check':{const ex=allExercises(p).find(x=>x.id===id),d=docOf(p,today);if(!ex){render();break}const on=!(d&&d.checked[id]);setCheck(id,on,repsFor(p,ex,today));render();break}
+    case'v3ok':ST.v3note=true;save();render();break;
+    case'iosok':iosHint=true;try{sessionStorage.setItem('ptc-ios','1')}catch(x){}render();break;
+    case'check':{const ex=exById(p,id);if(!ex){render();break}const d=docOf(p,today);setCheck(id,!(d&&d.checked[id]),repsFor(p,ex,today));render();break}
     case'vid':openVid.has(id)?openVid.delete(id):openVid.add(id);render();break;
     case'timer':startTimer(id);break;
     case'pain':{const d=docOf(p,today);if(!d)break;d.pain=+id;d.note=($('t-note')||{}).value||d.note;saveDay(docKey(p,today));render();break}
-    case'ptab':progTab=id;MD=null;render();break;
-    case'reston':{const pl=planFor(p,today),d=ensureDoc(p,today,pl);d.rest=true;
-      const cur=p.dayTypes[dtIndex(p,d.dayTypeId)];if(cur){d.checked={...d.checked};for(const e of cur.exercises)delete d.checked[e.id]}saveDay(docKey(p,today));render();window.scrollTo(0,0);break}
-    case'restoff':{const d=ensureDoc(p,today,planFor(p,today));d.rest=(p.restDays||[]).includes(new Date().getDay())?false:null;saveDay(docKey(p,today));render();break}
-    case'edopen':{editDay=id;selDay=id;ensureDoc(p,id,planFor(p,id));render();const el=$('daydetail');el&&el.scrollIntoView({block:'start',behavior:'smooth'});break}
-    case'eddone':editDay=null;render();break;
-    case'edset':{const k=editDay,d=ensureDoc(p,k,planFor(p,k)),sched=(p.restDays||[]).includes(parseKey(k).getDay());
-      const old=p.dayTypes[dtIndex(p,d.dayTypeId)];d.checked={...d.checked};
-      if(id==='rest'){if(old)for(const e of old.exercises)delete d.checked[e.id];d.rest=sched?null:true}
-      else{if(old&&old.id!==id)for(const e of old.exercises)delete d.checked[e.id];d.dayTypeId=id;d.pick=true;d.rest=sched?false:null}
-      saveDay(docKey(p,k));render();break}
-    case'edtog':{const k=editDay,d=ensureDoc(p,k,planFor(p,k)),ex=[p.daily,...p.dayTypes].flatMap(l=>l.exercises).find(e=>e.id===id);
-      const on=!d.checked[id];d.checked={...d.checked,[id]:on};d.reps={...(d.reps||{})};d.names={...(d.names||{})};
+    case'sore':MD={kind:'move',exId:id,from:today};openModal(moveForm());break;
+    case'moveto':moveEx(p,MD.exId,MD.from,id);closeModal();render();setSync('Moved to '+fmtDay(id));break;
+    case'moveskip':moveEx(p,MD.exId,MD.from,null);closeModal();render();break;
+    case'offday':{const to=offTarget(p,today),d=ensureDoc(p,today);for(const ex of planned(p,today))if(!d.checked[ex.id])moveEx(p,ex.id,today,to);const d2=ensureDoc(p,today);d2.off=true;d2.offTo=to;saveDay(docKey(p,today));render();window.scrollTo(0,0);break}
+    case'offundo':{const d=ensureDoc(p,today),to=d.offTo;for(const [x,t] of Object.entries(d.out))if(t===to){delete d.out[x];const td=docOf(p,to);if(td&&td.in){delete td.in[x];saveDay(docKey(p,to))}}d.off=false;delete d.offTo;saveDay(docKey(p,today));render();break}
+    case'edopen':editDay=id;selDay=id;editAll=false;ensureDoc(p,id);render();{const el=$('daydetail');el&&el.scrollIntoView({block:'start',behavior:'smooth'})}break;
+    case'edall':editAll=true;render();break;
+    case'eddone':editDay=null;editAll=false;render();break;
+    case'edtog':{const k=editDay,d=ensureDoc(p,k),ex=exById(p,id);if(!d.plan&&k<today)d.plan=dayInfo(p,k).list.map(x=>x.id).filter(x=>exById(p,x));
+      const on=!d.checked[id];d.checked={...d.checked,[id]:on};
       if(on){d.reps[id]=d.reps[id]||(ex?repsFor(p,ex,k):0);if(ex)d.names[id]=ex.name}else delete d.reps[id];
       saveDay(docKey(p,k));render();break}
-    case'edpain':{const k=editDay,d=ensureDoc(p,k,planFor(p,k));d.pain=d.pain===+id?null:+id;saveDay(docKey(p,k));render();break}
-    case'wkday':selDay=id;if(editDay&&editDay!==id)editDay=null;render();{const el=$('daydetail');el&&el.scrollIntoView({block:'nearest',behavior:'smooth'})}break;
+    case'edpain':{const d=ensureDoc(p,editDay);d.pain=d.pain===+id?null:+id;saveDay(docKey(p,editDay));render();break}
+    case'wkday':selDay=id;if(editDay&&editDay!==id){editDay=null;editAll=false}render();{const el=$('daydetail');el&&el.scrollIntoView({block:'nearest',behavior:'smooth'})}break;
+    case'ptab':progTab=id;render();break;
+    case'rebuild':buildWeek(p);save();render();setSync('Week rebuilt');break;
     case'presets':MD={kind:'preset'};openModal(presetList());break;
     case'presetpick':MD={kind:'preset',key:id};openModal(presetForm());break;
-    case'presetload':{const k=MD.key;loadPreset(p,k);ST.exampleBanner=false;progTab=k==='yti'?p.dayTypes[2].id:DAILY;save();closeModal();view=k==='yti'?'program':'today';render();window.scrollTo(0,0);setSync('Plan loaded');break}
-    case'addday':{const dt={id:rid(),name:'Day '+(p.dayTypes.length+1),exercises:[]};p.dayTypes.push(dt);progTab=dt.id;save();render();setTimeout(()=>{const i=$('dt-name');i&&i.select()},0);break}
-    case'delday':{const dt=curDt();if(!MD||MD.delDay!==dt.id){MD={kind:'delday',delDay:dt.id};render();break}
-      for(const ex of dt.exercises)if(ex.videoId)assets&&assets.delete(ex.videoId).catch(()=>{});p.dayTypes=p.dayTypes.filter(x=>x.id!==dt.id);MD=null;progTab=null;save();render();break}
-    case'up':case'down':{const list=curDt().exercises,i=list.findIndex(x=>x.id===id),j=a==='up'?i-1:i+1;if(j<0||j>=list.length)break;[list[i],list[j]]=[list[j],list[i]];save();render();break}
-    case'exadd':MD={kind:'ex',isNew:true,dtId:curDt().id,ex:newEx(),cancelUploads:[],removed:[]};openModal(exForm());break;
-    case'exedit':MD={kind:'ex',isNew:false,dtId:curDt().id,ex:clone(curDt().exercises.find(x=>x.id===id)),cancelUploads:[],removed:[]};openModal(exForm());break;
+    case'presetload':loadPreset(p,MD.key);ST.exampleBanner=false;save();closeModal();progTab=null;view='program';render();window.scrollTo(0,0);setSync('Plan added');break;
+    case'up':case'down':{const di=+progTab,list=p.week[di]||[],i=list.indexOf(id),j=a==='up'?i-1:i+1;if(i<0||j<0||j>=list.length)break;[list[i],list[j]]=[list[j],list[i]];save();render();break}
+    case'dayrm':{const di=+progTab;p.week[di]=(p.week[di]||[]).filter(x=>x!==id);p.auto=false;save();render();break}
+    case'dayadd':MD={kind:'pick',day:+progTab};openModal(pickForm());break;
+    case'pick':{const di=MD.day;(p.week[di]=p.week[di]||[]).push(id);p.auto=false;save();closeModal();render();break}
+    case'picknew':{const di=MD.day;MD={kind:'ex',isNew:true,ex:newEx({group:'other'}),days:[di],cancelUploads:[],removed:[]};openModal(exForm());break}
+    case'exadd':MD={kind:'ex',isNew:true,ex:newEx({group:'other'}),days:[],cancelUploads:[],removed:[]};openModal(exForm());break;
+    case'exedit':MD={kind:'ex',isNew:false,ex:clone(exById(p,id)),days:scheduleDaysOf(p,id),cancelUploads:[],removed:[]};openModal(exForm());break;
     case'vremove':readExForm();if(MD.ex.videoId)MD.removed.push(MD.ex.videoId);MD.ex.videoId='';MD.ex.videoUrl='';openModal(exForm());break;
     case'exsave':{readExForm();if(!MD.ex.name){$('f-name').focus();$('f-name').placeholder='Give it a name';break}
-      const dt=getList(p,MD.dtId);if(!dt){closeModal();break}
-      const i=dt.exercises.findIndex(x=>x.id===MD.ex.id);if(i<0)dt.exercises.push(MD.ex);else dt.exercises[i]=MD.ex;
+      if(MD.isNew&&MD.ex.group==='other')MD.ex.group=guessGroup(MD.ex);
+      const i=p.lib.findIndex(x=>x.id===MD.ex.id);if(i<0)p.lib.push(MD.ex);else p.lib[i]=MD.ex;
+      const before=scheduleDaysOf(p,MD.ex.id).join();
+      for(const d of WEEK_ORDER){const l=p.week[d]=p.week[d]||[];const want=MD.days.includes(d),has=l.includes(MD.ex.id);if(want&&!has)l.push(MD.ex.id);if(!want&&has)p.week[d]=l.filter(x=>x!==MD.ex.id)}
+      if(MD.isNew&&!MD.days.length)placeOne(p,MD.ex);else if(before!==scheduleDaysOf(p,MD.ex.id).join())p.auto=false;
       for(const v of MD.removed)if(!MD.cancelUploads.includes(v))assets&&assets.delete(v).catch(()=>{});
       MD.cancelUploads=MD.cancelUploads.filter(x=>x!==MD.ex.videoId);save();closeModal();render();break}
-    case'exdel':{if(!MD.confirmDel){readExForm();MD.confirmDel=true;openModal(exForm());break}
-      const dt=getList(p,MD.dtId);const ex=dt&&dt.exercises.find(x=>x.id===MD.ex.id);if(ex&&ex.videoId)assets&&assets.delete(ex.videoId).catch(()=>{});if(dt)dt.exercises=dt.exercises.filter(x=>x.id!==MD.ex.id);save();closeModal();render();break}
+    case'exdel':{if(!MD.confirmDel){readExForm();MD.confirmDel=true;openModal(exForm());break}removeEx(p,MD.ex.id);save();closeModal();render();break}
     case'addprof':MD={kind:'p',isNew:true,p:newProfile('',ST.profiles.length,false)};openModal(profForm());break;
     case'editprof':MD={kind:'p',isNew:false,p:clone(p)};openModal(profForm());break;
     case'psave':{const name=$('p-name').value.trim();if(!name){$('p-name').focus();break}
       const np=MD.p,inc=Math.max(0,Math.min(50,parseInt($('p-inc').value,10)||0)),wk=Math.max(1,parseInt($('p-wk').value,10)||1);
-      np.name=name;np.increment=inc;np.reminder={time:$('p-time').value};np.restDays=[0,1,2,3,4,5,6].filter(i=>$('p-r'+i).checked);np.restKeepsDaily=$('p-rkd').checked;np.startDate=addDays(mondayOf(today),-7*(wk-1));
-      const i=ST.profiles.findIndex(x=>x.id===np.id);if(i<0){ST.profiles.push(np);ST.activeId=np.id}else{Object.assign(ST.profiles[i],{name:np.name,increment:np.increment,reminder:np.reminder,startDate:np.startDate,restDays:np.restDays,restKeepsDaily:np.restKeepsDaily})}
+      np.name=name;np.increment=inc;np.reminder={time:$('p-time').value};np.startDate=addDays(mondayOf(today),-7*(wk-1));
+      const i=ST.profiles.findIndex(x=>x.id===np.id);if(i<0){ST.profiles.push(np);ST.activeId=np.id}else Object.assign(ST.profiles[i],{name:np.name,increment:np.increment,reminder:np.reminder,startDate:np.startDate});
       save();closeModal();render();break}
     case'pdel':{if(!MD.confirmDel){MD.p.name=$('p-name').value||MD.p.name;MD.confirmDel=true;openModal(profForm());break}
-      const gone=ST.profiles.find(x=>x.id===MD.p.id);if(gone)for(const dt of [gone.daily,...gone.dayTypes])for(const ex of dt.exercises)if(ex.videoId)assets&&assets.delete(ex.videoId).catch(()=>{});
+      const gone=ST.profiles.find(x=>x.id===MD.p.id);if(gone)for(const ex of gone.lib)if(ex.videoId)assets&&assets.delete(ex.videoId).catch(()=>{});
       ST.profiles=ST.profiles.filter(x=>x.id!==MD.p.id);ST.activeId=ST.profiles[0].id;save();closeModal();render();break}
     case'backup':{const data={app:'family-pt-coach',saved:new Date().toISOString(),state:ST,days:DD};const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
       const fn='pt-backup-'+dayKey()+'.json';const file=new File([blob],fn,{type:'application/json'});
@@ -738,29 +763,30 @@ document.addEventListener('click',e=>{
   }
 });
 document.addEventListener('input',e=>{
-  if(e.target.id==='dt-name'){const p=prof(),dt=getList(p,e.target.dataset.dt);if(dt){dt.name=e.target.value;save()}}
   if(e.target.id==='ed-note'){const p=prof(),k=e.target.dataset.day,d=docOf(p,k);if(d){d.note=e.target.value.slice(0,1000);saveDay(docKey(p,k))}}
   if(e.target.id==='t-note'){const p=prof(),d=docOf(p,dayKey());if(d){d.note=e.target.value.slice(0,1000);saveDay(docKey(p,dayKey()))}}
 });
 document.addEventListener('change',async e=>{
-  if(e.target.id==='dt-name'){render();return}
-  if((e.target.id==='f-demo'||e.target.id==='f-unit')&&MD){readExForm();openModal(exForm());return}
+  if(e.target.dataset&&e.target.dataset.a==='tday'){const p=prof(),i=+e.target.dataset.id;p.trainDays=WEEK_ORDER.filter(d=>d===i?e.target.checked:(p.trainDays||[]).includes(d));
+    if(p.auto)buildWeek(p);else if(!e.target.checked){for(const id of (p.week[i]||[]).slice()){const ex=exById(p,id);p.week[i]=p.week[i].filter(x=>x!==id);if(ex&&!scheduleDaysOf(p,id).length)placeOne(p,ex)}}
+    save();render();return}
+  if((e.target.id==='f-demo'||e.target.id==='f-unit'||e.target.id==='f-group')&&MD){readExForm();if(e.target.id==='f-group'&&MD.isNew)MD.ex.progress=MD.ex.group!=='stretch';openModal(exForm());return}
   if(e.target.id==='f-restore'&&MD){const f=e.target.files&&e.target.files[0];if(!f)return;
     try{const data=JSON.parse(await f.text());if(data.app!=='family-pt-coach'||!data.state)throw new Error('not a PT backup');
       ST=migrate(data.state);DD=data.days||{};const now=Date.now();for(const k in DD)if(DD[k])DD[k].t=now;await loadVideos();try{writeState();localStorage.setItem('ptc-days',JSON.stringify(DD))}catch(x){setSync(failMsg,true)}
       closeModal();render();setSync('Backup restored')}catch(err){MD.berr='That file isn’t a PT Coach backup ('+err.message+').';MD.bok='';openModal(profForm())}return}
   if(e.target.id!=='f-vid'||!MD)return;
   const file=e.target.files&&e.target.files[0];if(!file)return;readExForm();MD.verr='';
-  if(file.size>150*1024*1024){MD.verr='That clip is '+(file.size/1048576).toFixed(0)+' MB. Trim it under 150 MB (about 1–2 minutes) and try again.';openModal(exForm());return}
+  if(file.size>150*1024*1024){MD.verr='That clip is '+(file.size/1048576).toFixed(0)+' MB. Trim it under 150 MB and try again.';openModal(exForm());return}
   MD.uploading=true;openModal(exForm());
   try{const r=await assets.upload(file);if(!MD)return;if(MD.ex.videoId)MD.removed.push(MD.ex.videoId);MD.ex.videoId=r.id;MD.ex.videoUrl=r.url;MD.cancelUploads.push(r.id)}catch(err){if(MD)MD.verr='Couldn’t save the video: '+(err&&err.message||'phone storage may be full')+'.'}
   if(MD){MD.uploading=false;openModal(exForm())}
 });
 document.addEventListener('visibilitychange',()=>{if(S&&document.visibilityState==='visible')lockScreen()});
 let lastDay=dayKey();setInterval(()=>{if(dayKey()!==lastDay){lastDay=dayKey();if(!S&&!MD)render()}},60000);
-const busy=()=>S||(MD&&MD.kind!=='delday')||(document.activeElement&&['dt-name','t-note','ed-note'].includes(document.activeElement.id));
+const busy=()=>S||MD||(document.activeElement&&['t-note','ed-note'].includes(document.activeElement.id));
 
-/* ---------- start ---------- */
+/* ============ start ============ */
 render();
 (async()=>{
   await loadVideos();if(!busy())render();

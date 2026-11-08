@@ -1,10 +1,12 @@
 # Family PT Coach
 
-Daily physical-therapy check-off app for the family.
+Weekly physical-therapy schedule for the family.
 
-- **3-day rotation that repeats** — Day 1 legs & hips, Day 2 spine & abs, Day 3 arms. The next workout always follows the last one done, so a missed day doesn't skip a body area. More days can be added in the app.
-- **Reps go up 2 every week** (per person setting; any exercise can be set to stay fixed, e.g. stretches).
-- Check off each exercise, demo animation or your own video per exercise, guided hold/rep/rest timer, pain 0–10 and notes, week grid.
+- **Weekly schedule** on the workout days you pick (default Mon, Tue, Thu, Fri). Days alternate: legs, hips & core + lower-body stretches, then shoulders & arms + back stretches + walking, so each muscle group gets at least a day off between sessions. "Rebuild my week" re-does the layout; you can also place exercises by hand (the app warns about back-to-back days for the same muscles).
+- **Reps go up 2 every week** (per-person setting); stretches stay the same.
+- **Sore? Move it** on any exercise moves it to the best later day (no same muscle group that day or the day before) or skips it this week. **Take today off** moves the day's workout to the next rest day.
+- Missed exercises from a partly done day carry over until done, after the muscle has had a day's rest.
+- Demo animations or your own video per exercise, guided hold/rep/rest timer, pain 0–10 and notes, week grid, history, edit past days.
 - One family passcode (`FAMILY_CODE`), entered once per phone.
 
 ## Where data lives
@@ -18,5 +20,6 @@ The free plan sleeps after ~15 minutes idle; the first open after that takes ~30
 ## Files
 - `server.js` — no-dependency Node server: passcode gate, static files, video byte ranges.
 - `public/index.html` — the whole app.
+- `tests/app.test.js` — end-to-end checks (`npm test` with the server running on port 3999).
 - `public/sw.js` — offline support.
 - `public/demos/*.mp4` — demo animations; `tools/render-demos.py` renders them (Python + Pillow + ffmpeg). To add a demo, add a clip there and an entry in `DEMOS` in `index.html`.
