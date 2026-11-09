@@ -95,8 +95,20 @@ const V3_4DAY={fn:()=>{const ex=(id,name,group,extra)=>({id,name,group,sets:2,re
  {const{ctx,pg}=await open(b,{seed:{fn:()=>{localStorage.setItem('ptc-state',JSON.stringify({v:1,activeId:'a',profiles:[{id:'a',name:'Mom',hue:0,exercises:[{id:'x',name:'Clamshell',sets:2,reps:12,holdSec:0,restSec:30,side:'each'}]}]}));localStorage.removeItem('ptc-days')}}});
   ok((await T(pg,'#chips')).includes('Mom')&&(await names(pg)).includes('Clamshell'),'person and exercise kept, on a legs day');ok(pg.errs.length===0,'no errors');await ctx.close()}
 
- console.log('Reps go up 2 every week');
+ console.log('Reps stay the same by default (frozen Nov 9)');
  {const{ctx,pg}=await open(b,{seed:CUSTOM});const dose=n=>card(pg,n).locator('.dose').textContent();
+  ok((await dose('Glute bridge'))==='2 × 10','10 reps this week');
+  await setDay(pg,'2026-11-16T09:00:00');ok((await dose('Glute bridge'))==='2 × 10','still 10 next week');
+  ok(pg.errs.length===0,'no errors');await ctx.close()}
+ {const{ctx,pg}=await open(b,{seed:{fn:()=>{const s=JSON.parse(localStorage.getItem('ptc-state'));delete s.upd.nov9;const p=s.profiles[0];p.increment=2;p.startDate='2026-11-02';s.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(s))}}});
+  const dose=n=>card(pg,n).locator('.dose').textContent();
+  ok((await dose('Glute bridge'))==='2 × 12 · 3 s hold','phone in week 2 keeps today’s 12 reps');
+  await setDay(pg,'2026-11-23T09:00:00');ok((await dose('Glute bridge'))==='2 × 12 · 3 s hold','and stays at 12 weeks later');
+  await go(pg,'program');ok((await T(pg,'#main')).includes('Reps stay the same each week'),'Program says reps stay the same');
+  ok(pg.errs.length===0,'no errors');await ctx.close()}
+ console.log('Reps go up when turned back on');
+ {const{ctx,pg}=await open(b,{seed:CUSTOM});const dose=n=>card(pg,n).locator('.dose').textContent();
+  await go(pg,'program');await pg.click('[data-a=editprof]');await pg.fill('#p-inc','2');await pg.fill('#p-wk','1');await pg.click('[data-a=psave]');await go(pg,'today');
   ok((await dose('Glute bridge'))==='2 × 10','week 1: 10 reps');
   await setDay(pg,'2026-11-16T09:00:00');ok((await dose('Glute bridge'))==='2 × 12','week 2: 12 reps');
   await setDay(pg,'2026-11-23T09:00:00');ok((await dose('Glute bridge'))==='2 × 14','week 3: 14 reps');
@@ -143,8 +155,8 @@ const V3_4DAY={fn:()=>{const ex=(id,name,group,extra)=>({id,name,group,sets:2,re
   ok(rows.length===4&&rows[0].includes('Prone Y raise')&&rows[1].includes('Chair squat'),'Today shows the next 4 days with their exercises');
   await pg.click('[data-a=peek][data-id="2026-11-11"]');ok((await T(pg,'#daydetail')).includes('Coming up')&&(await T(pg,'#daydetail')).includes('Bird dog'),'tapping opens that day’s full list');
   await pg.click('[data-a=wknext]');ok((await T(pg,'#main h2')).includes('Next week'),'next week');
-  ok((await T(pg,'#daydetail')).includes('Mon 11/16')&&(await T(pg,'#daydetail')).includes('2 × 12'),'next Monday with next week’s reps');
-  await pg.click('[data-a=wknext]');await pg.click('.wk button >> nth=2');ok((await T(pg,'#daydetail')).includes('Wed 11/25')&&(await T(pg,'#daydetail')).includes('2 × 14'),'two weeks out, any day');
+  ok((await T(pg,'#daydetail')).includes('Mon 11/16')&&(await T(pg,'#daydetail')).includes('2 × 10'),'next Monday with its reps');
+  await pg.click('[data-a=wknext]');await pg.click('.wk button >> nth=2');ok((await T(pg,'#daydetail')).includes('Wed 11/25')&&(await T(pg,'#daydetail')).includes('2 × 10'),'two weeks out, any day');
   await pg.click('[data-a=wkthis]');ok((await T(pg,'#main h2')).includes('This week'),'back to this week');
   ok(pg.errs.length===0,'no errors');await ctx.close()}
 

@@ -371,6 +371,10 @@ function migrate(st){
   return out;
 }
 
+function freezeReps(p,date){const wk=Math.max(1,Math.floor(diffDays(p.startDate,date)/7)+1),inc=p.increment||0;
+  if(inc)for(const e of p.lib)if(e.progress!==false)e.reps+=inc*(wk-1);
+  p.increment=0;p.startDate=mondayOf(date)}
+function applyNov9(st){if(st.upd&&st.upd.nov9)return false;st.upd={...(st.upd||{}),nov9:true};for(const p of st.profiles)if(p.increment)freezeReps(p,dayKey());return true}
 function applyNov8(st){if(st.upd&&st.upd.nov8)return false;st.upd={...(st.upd||{}),nov8:true};let changed=false;
   for(const p of st.profiles){const cp=p.lib.find(e=>/child'?s pose/i.test(e.name));if(!cp)continue;
     p.lib=p.lib.filter(e=>e!==cp);for(const d in p.week)p.week[d]=(p.week[d]||[]).filter(x=>x!==cp.id);
@@ -392,7 +396,7 @@ async function loadVideos(){if(!assets)return;for(const p of ST.profiles)for(con
 
 function readStored(key,fallback){try{return JSON.parse(localStorage.getItem(key)||'null')||fallback}catch(e){return fallback}}
 ST=readStored('ptc-state',null);DD=readStored('ptc-days',{});
-{const was=ST&&ST.v;ST=migrate(ST);const upd=applyNov8(ST);
+{const was=ST&&ST.v;ST=migrate(ST);const upd8=applyNov8(ST),upd=applyNov9(ST)||upd8;
  if(was!==3||upd){try{if(was){localStorage.setItem('ptc-state-before-v3',JSON.stringify(readStored('ptc-state',null)))}ST.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(ST))}catch(e){}}}
 
 /* ============ saving ============ */
@@ -594,7 +598,7 @@ function vProgram(){
   if(progTab===null)progTab=String(wd(today));
   let h='<div class="row between"><h2 style="font-size:22px">'+esc(p.name)+'’s week</h2><button class="btn sm" data-a="editprof">Settings</button></div>';
   h+='<section class="card"><span class="l small muted">Workout days</span><div class="days">'+WEEK_ORDER.map(i=>'<label><input type="checkbox" data-a="tday" data-id="'+i+'" id="td'+i+'" '+((p.trainDays||[]).includes(i)?'checked':'')+'>'+DAYS[i]+'</label>').join('')+'</div>';
-  h+='<p class="small muted" style="margin:0">Legs & core one day, shoulders & arms the next, so no muscle group is worked two days in a row. Each exercise is done twice a week, spread so each day stays short. Reps go up '+(p.increment||0)+' every week (stretches stay the same).</p>';
+  h+='<p class="small muted" style="margin:0">Legs & core one day, shoulders & arms the next, so no muscle group is worked two days in a row. Each exercise is done twice a week, spread so each day stays short. '+(p.increment?'Reps go up '+p.increment+' every week (stretches stay the same).':'Reps stay the same each week (turn increases on in Settings).')+'</p>';
   h+='<div class="grid2"><button class="btn" data-a="rebuild">'+(p.auto?'↻ Rebuild my week':'↻ Rebuild automatically')+'</button><button class="btn" data-a="presets">Ready-made plans</button></div>';
   if(!p.auto)h+='<p class="small muted" style="margin:0">You’ve arranged this week yourself. Rebuilding replaces your arrangement.</p>';
   const b2b=backToBack(p);if(b2b.length)h+='<p class="small" style="margin:0;color:var(--warn)"><b>Heads up:</b> '+b2b.map(x=>GROUPS[x.g].name+' on '+DAYS[x.d]+' and '+DAYS[x.n]).join('; ')+' back to back. Those muscles won’t get a rest day.</p>';
@@ -603,7 +607,7 @@ function vProgram(){
   if(progTab==='all'){
     if(!p.lib.length)h+='<div class="card empty">No exercises yet.</div>';
     for(const g of Object.keys(GROUPS)){const l=p.lib.filter(e=>e.group===g);if(!l.length)continue;
-      h+='<span class="eyebrow">'+GROUPS[g].name+'</span><div class="exlist">'+l.map(ex=>'<article class="card ex"><div style="min-width:0;display:flex;flex-direction:column;gap:4px"><h3>'+esc(ex.name)+'</h3><span class="dose">'+esc(doseText(ex,repsFor(p,ex,today)))+'</span><span class="small muted">'+(scheduleDaysOf(p,ex.id).map(d=>DAYS[d]).join(', ')||'Not scheduled')+' · '+(ex.progress===false?'stays the same':'started at '+ex.reps+(ex.unit==='min'?' min':' reps')+', +'+(p.increment||0)+'/week')+'</span></div><div class="tools"></div><div style="grid-column:1/-1"><button class="btn sm" data-a="exedit" data-id="'+ex.id+'">Edit</button></div></article>').join('')+'</div>'}
+      h+='<span class="eyebrow">'+GROUPS[g].name+'</span><div class="exlist">'+l.map(ex=>'<article class="card ex"><div style="min-width:0;display:flex;flex-direction:column;gap:4px"><h3>'+esc(ex.name)+'</h3><span class="dose">'+esc(doseText(ex,repsFor(p,ex,today)))+'</span><span class="small muted">'+(scheduleDaysOf(p,ex.id).map(d=>DAYS[d]).join(', ')||'Not scheduled')+' · '+(ex.progress===false?'stays the same':(p.increment?'started at '+ex.reps+(ex.unit==='min'?' min':' reps')+', +'+p.increment+'/week':'stays the same'))+'</span></div><div class="tools"></div><div style="grid-column:1/-1"><button class="btn sm" data-a="exedit" data-id="'+ex.id+'">Edit</button></div></article>').join('')+'</div>'}
     h+='<button class="btn primary big" data-a="exadd">+ New exercise</button>';
     return h}
   const di=+progTab,ids=p.week[di]||[],list=ids.map(id=>exById(p,id)).filter(Boolean);
@@ -664,7 +668,7 @@ function exForm(){
   h+='<div class="f"><span class="l">Days</span><div class="days">'+WEEK_ORDER.map(i=>'<label><input type="checkbox" id="f-d'+i+'" '+((MD.days||[]).includes(i)?'checked':'')+'>'+DAYS[i]+'</label>').join('')+'</div><span class="small muted">'+(MD.isNew?'Leave empty and the app picks the right days for its muscle group.':'')+'</span></div>';
   h+='<div class="grid4">'+[['f-sets','Sets',e.sets],['f-reps',e.unit==='min'?'Week 1 minutes':'Week 1 reps',e.reps],['f-hold','Hold (s)',e.holdSec],['f-rest','Rest (s)',e.restSec]].map(([id,l,v])=>'<div class="f"><label for="'+id+'">'+l+'</label><input id="'+id+'" type="number" inputmode="numeric" min="0" max="999" value="'+v+'"></div>').join('')+'</div>';
   h+='<div class="f"><label for="f-unit">Count</label><select id="f-unit"><option value="" '+(e.unit!=='min'?'selected':'')+'>Reps</option><option value="min" '+(e.unit==='min'?'selected':'')+'>Minutes (walking, bike…)</option></select></div>';
-  h+='<label class="check2"><input type="checkbox" id="f-prog" '+(e.progress!==false?'checked':'')+'> Add '+(p.increment||0)+(e.unit==='min'?' minutes':' reps')+' every week</label>';
+  h+='<label class="check2"><input type="checkbox" id="f-prog" '+(e.progress!==false?'checked':'')+'> Increase '+(e.unit==='min'?'minutes':'reps')+' each week'+(p.increment?' (+'+p.increment+')':' (when turned on in Settings)')+'</label>';
   h+='<div class="f"><label for="f-side">Side</label><select id="f-side">'+Object.entries({both:'Both / not sided',each:'Each side (left then right)',left:'Left only',right:'Right only'}).map(([k,v])=>'<option value="'+k+'" '+(e.side===k?'selected':'')+'>'+v+'</option>').join('')+'</select></div>';
   h+='<div class="f"><span class="l">Resistance band</span><div class="bands">'+Object.entries(BANDS).map(([k,[n,c]])=>'<label><input type="radio" name="f-band" value="'+k+'" '+(e.band===k?'checked':'')+'>'+(c?'<span class="sw" style="background:'+c+'"></span>':'')+n+'</label>').join('')+'</div></div>';
   h+='<div class="f"><label for="f-notes">Cues and notes</label><textarea id="f-notes" placeholder="Keep back flat, slow on the way down">'+esc(e.notes)+'</textarea></div>';
