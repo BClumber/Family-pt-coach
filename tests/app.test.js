@@ -95,6 +95,24 @@ const V3_4DAY={fn:()=>{const ex=(id,name,group,extra)=>({id,name,group,sets:2,re
  {const{ctx,pg}=await open(b,{seed:{fn:()=>{localStorage.setItem('ptc-state',JSON.stringify({v:1,activeId:'a',profiles:[{id:'a',name:'Mom',hue:0,exercises:[{id:'x',name:'Clamshell',sets:2,reps:12,holdSec:0,restSec:30,side:'each'}]}]}));localStorage.removeItem('ptc-days')}}});
   ok((await T(pg,'#chips')).includes('Mom')&&(await names(pg)).includes('Clamshell'),'person and exercise kept, on a legs day');ok(pg.errs.length===0,'no errors');await ctx.close()}
 
+ console.log('Duplicate exercises cleaned up');
+ {const{ctx,pg}=await open(b,{seed:{fn:()=>{const s=JSON.parse(localStorage.getItem('ptc-state'));const p=s.profiles[0];
+    const ex=(id,name,group,extra)=>({id,name,group,sets:2,reps:10,holdSec:0,restSec:30,side:'both',band:'',notes:'',demo:'',videoId:'',videoUrl:'',videoLink:'',progress:false,...extra});
+    p.lib=[ex('gb','Glute bridge','legs'),ex('gb2','Glute Bridge','legs',{reps:12}),ex('sp','Side plank (from knees)','core'),ex('sp2','Side plank','core'),ex('y','Prone Y raise','upper'),ex('t','Prone T raise','upper')];
+    p.week={1:['gb','gb2','sp','sp2'],2:['y','t'],3:['gb2','sp'],4:['y','t'],5:['gb','sp2'],6:[],0:[]};p.auto=false;s.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(s));
+    localStorage.setItem('ptc-days',JSON.stringify({[p.id+'_2026-11-06']:{pid:p.id,date:'2026-11-06',checked:{gb2:true,sp:true},reps:{gb2:12},names:{gb2:'Glute Bridge'},plan:['gb','gb2','sp','sp2'],t:1},
+      [p.id+'_2026-11-04']:{pid:p.id,date:'2026-11-04',checked:{gb2:true,gb:true},reps:{},plan:['gb','gb2'],t:1}}))}}});
+  const n=await names(pg);ok(n.filter(x=>/glute/i.test(x)).length===1&&n.filter(x=>/side plank/i.test(x)).length===1,'Monday shows each exercise once: '+n.join(', '));
+  ok((await carried(pg)).length===0,'no duplicate carried over');
+  const s1=await stored(pg);const p=s1.st.profiles[0];ok(p.lib.length===4,'library merged to 4 exercises');
+  ok(p.lib.find(e=>/glute/i.test(e.name)).id==='gb2','kept the copy with the most history');
+  ok(Object.values(p.week).every(l=>new Set(l).size===l.length)&&!Object.values(p.week).flat().some(id=>!p.lib.find(e=>e.id===id)),'schedule points only at kept exercises');
+  const d=Object.values(s1.dd).find(x=>x.date==='2026-11-06');ok(d.checked.gb2===true&&d.checked.sp===true&&!('sp2' in d.checked),'history moved onto the kept copies');
+  await go(pg,'week');ok((await T(pg,'.hist')).includes('Glute Bridge'),'history still shows');
+  await go(pg,'program');await pg.click('[data-a=ptab][data-id=all]');await pg.click('[data-a=exadd]');await pg.fill('#f-name','glute bridge');await pg.click('[data-a=exsave]');
+  ok((await T(pg,'.sheet')).includes('You already have'),'adding a same-name exercise is blocked');
+  ok(pg.errs.length===0,'no errors');await ctx.close()}
+
  console.log('Reps stay the same by default (frozen Nov 9)');
  {const{ctx,pg}=await open(b,{seed:CUSTOM});const dose=n=>card(pg,n).locator('.dose').textContent();
   ok((await dose('Glute bridge'))==='2 × 10','10 reps this week');

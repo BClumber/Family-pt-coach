@@ -317,6 +317,7 @@ function guessGroup(e){
   if(/bridge|clam|squat|lunge|heel slide|calf|step|leg|hip|glute|knee|thigh|abduct|adduct/.test(n))return'legs';
   return'other';
 }
+const normName=n=>String(n||'').toLowerCase().replace(/\([^)]*\)/g,' ').replace(/[^a-z0-9]+/g,' ').trim();
 const newEx=o=>{const e={id:rid(),name:'',sets:2,reps:10,holdSec:0,restSec:30,side:'both',band:'',notes:'',videoId:'',videoUrl:'',videoLink:'',demo:'',...o};
   if(!GROUPS[e.group])e.group=guessGroup(e);if(e.progress===undefined)e.progress=e.group!=='stretch';return e};
 
@@ -374,11 +375,23 @@ function migrate(st){
 function freezeReps(p,date){const wk=Math.max(1,Math.floor(diffDays(p.startDate,date)/7)+1),inc=p.increment||0;
   if(inc)for(const e of p.lib)if(e.progress!==false)e.reps+=inc*(wk-1);
   p.increment=0;p.startDate=mondayOf(date)}
+function dedupeProfile(p,days){const groups=new Map();for(const e of p.lib){const k=normName(e.name);if(!k)continue;(groups.get(k)||groups.set(k,[]).get(k)).push(e)}
+  const alias={};const used=id=>{let n=0;for(const x of Object.values(days))if(x&&x.pid===p.id&&x.checked&&x.checked[id])n++;return n};
+  for(const list of groups.values()){if(list.length<2)continue;
+    const keep=list.slice().sort((a,b)=>(b.videoId?1:0)-(a.videoId?1:0)||used(b.id)-used(a.id))[0];
+    for(const e of list)if(e!==keep){alias[e.id]=keep.id;if(!keep.videoLink&&e.videoLink)keep.videoLink=e.videoLink;if(!keep.notes&&e.notes)keep.notes=e.notes}}
+  let changed=Object.keys(alias).length>0;
+  if(changed){p.lib=p.lib.filter(e=>!alias[e.id]);
+    for(const x of Object.values(days)){if(!x||x.pid!==p.id)continue;
+      for(const f of ['checked','reps','names','out','in','skipCarry','skip']){const o=x[f];if(!o)continue;for(const id of Object.keys(o))if(alias[id]){const v=o[id];delete o[id];if(o[alias[id]]===undefined||(f==='checked'&&v))o[alias[id]]=v}}
+      if(Array.isArray(x.plan))x.plan=[...new Set(x.plan.map(id=>alias[id]||id))];x.t=Date.now()}}
+  for(const d in p.week){const before=(p.week[d]||[]).length;p.week[d]=[...new Set((p.week[d]||[]).map(id=>alias[id]||id))].filter(id=>p.lib.some(e=>e.id===id));if(p.week[d].length!==before)changed=true}
+  return changed}
 function applyNov9(st){if(st.upd&&st.upd.nov9)return false;st.upd={...(st.upd||{}),nov9:true};for(const p of st.profiles)if(p.increment)freezeReps(p,dayKey());return true}
 function applyNov8(st){if(st.upd&&st.upd.nov8)return false;st.upd={...(st.upd||{}),nov8:true};let changed=false;
   for(const p of st.profiles){const cp=p.lib.find(e=>/child'?s pose/i.test(e.name));if(!cp)continue;
     p.lib=p.lib.filter(e=>e!==cp);for(const d in p.week)p.week[d]=(p.week[d]||[]).filter(x=>x!==cp.id);
-    const have=new Set(p.lib.map(e=>e.name.toLowerCase()));for(const it of PRESETS.basics.items)if(!have.has(it.name.toLowerCase()))p.lib.push(newEx({side:'both',...it,preset:'basics'}));
+    const have=new Set(p.lib.map(e=>normName(e.name)));for(const it of PRESETS.basics.items)if(!have.has(normName(it.name)))p.lib.push(newEx({side:'both',...it,preset:'basics'}));
     p.trainDays=[1,2,3,4,5];buildWeek(p);p.nov8=true;changed=true}
   return changed}
 let ST=null, DD={}, view='today', progTab=null, S=null, MD=null, openVid=new Set(), selDay=null, editDay=null, editAll=false, weekOff=0;
@@ -396,7 +409,9 @@ async function loadVideos(){if(!assets)return;for(const p of ST.profiles)for(con
 
 function readStored(key,fallback){try{return JSON.parse(localStorage.getItem(key)||'null')||fallback}catch(e){return fallback}}
 ST=readStored('ptc-state',null);DD=readStored('ptc-days',{});
-{const was=ST&&ST.v;ST=migrate(ST);const upd8=applyNov8(ST),upd=applyNov9(ST)||upd8;
+{const was=ST&&ST.v;ST=migrate(ST);const upd8=applyNov8(ST),upd9=applyNov9(ST);let dd=false;for(const p of ST.profiles)if(dedupeProfile(p,DD))dd=true;
+ if(dd){try{localStorage.setItem('ptc-days',JSON.stringify(DD))}catch(e){}}
+ const upd=upd8||upd9||dd;
  if(was!==3||upd){try{if(was){localStorage.setItem('ptc-state-before-v3',JSON.stringify(readStored('ptc-state',null)))}ST.t=Date.now();localStorage.setItem('ptc-state',JSON.stringify(ST))}catch(e){}}}
 
 /* ============ saving ============ */
@@ -433,7 +448,7 @@ const anyChecked=d=>d&&d.checked&&Object.values(d.checked).some(Boolean);
 function planned(p,date){const d=docOf(p,date);let ids=(p.week[wd(date)]||[]).slice();
   if(d&&d.out)ids=ids.filter(id=>!d.out[id]);
   if(d&&d.in)for(const id in d.in)if(d.in[id]&&!ids.includes(id))ids.push(id);
-  return ids.map(id=>exById(p,id)).filter(Boolean)}
+  const seen=new Set();return ids.map(id=>exById(p,id)).filter(e=>{if(!e)return false;const k=normName(e.name)||e.id;if(seen.has(k))return false;seen.add(k);return true})}
 function groupsOf(list){const s=new Set(list.map(e=>e.group));return STRENGTH.filter(g=>s.has(g))}
 function dayTitle(list){const g=groupsOf(list);if(g.length)return g.map(x=>GROUPS[x].name).join(' · ');if(list.some(e=>e.group==='stretch'))return'Stretching';if(list.length)return GROUPS[list[0].group].name;return'Rest day'}
 function dayShort(list){const g=groupsOf(list);if(g.length)return GROUPS[g[0]].short;if(list.length)return GROUPS[list[0].group].short;return'Rest'}
@@ -448,10 +463,10 @@ function missedFor(p,today){
     if(!x.plan||!x.plan.some(id=>x.checked&&x.checked[id]))continue;
     for(const id of x.plan)if(!(x.checked&&x.checked[id])&&!(x.out&&x.out[id])){const o=pend.get(id);pend.set(id,{since:o?o.since:x.date,last:x.date})}
   }
-  const d=docOf(p,today),inToday=new Set(planned(p,today).map(e=>e.id));const out=[];
+  const d=docOf(p,today),todayList=planned(p,today),inToday=new Set(todayList.map(e=>e.id)),todayNames=new Set(todayList.map(e=>normName(e.name)));const out=[];
   // wait a day if that muscle group was worked yesterday
   const y=docOf(p,addDays(today,-1)),yGroups=new Set(y?Object.keys(y.checked||{}).filter(i=>y.checked[i]).map(i=>exById(p,i)).filter(Boolean).map(e=>e.group).filter(g=>STRENGTH.includes(g)):[]);
-  for(const [id,m] of pend){const ex=exById(p,id);if(!ex||inToday.has(id)||(d&&d.skipCarry&&d.skipCarry[id])||yGroups.has(ex.group))continue;out.push({ex,...m})}
+  for(const [id,m] of pend){const ex=exById(p,id);if(!ex||inToday.has(id)||todayNames.has(normName(ex.name))||out.some(o=>normName(o.ex.name)===normName(ex.name))||(d&&d.skipCarry&&d.skipCarry[id])||yGroups.has(ex.group))continue;out.push({ex,...m})}
   return out}
 function missedLabel(m,today){if(m.since===addDays(today,-1))return'Missed yesterday';if(m.since===m.last)return'Missed '+fmtDay(m.since);return'Missed since '+fmtDay(m.since)}
 function isTrainDay(p,date){return planned(p,date).length>0}
@@ -708,8 +723,8 @@ function presetForm(){
   return h}
 function loadPreset(p,key){const pr=PRESETS[key];
   for(const x of p.lib.filter(x=>x.preset===key||/^Example —/.test(x.notes||'')))removeEx(p,x.id);
-  const have=new Set(p.lib.map(e=>e.name.toLowerCase()));
-  for(const it of pr.items){if(have.has(it.name.toLowerCase()))continue;const e=newEx({side:'both',...it,preset:key});p.lib.push(e);if(!p.auto)placeOne(p,e)}
+  const have=new Set(p.lib.map(e=>normName(e.name)));
+  for(const it of pr.items){if(have.has(normName(it.name)))continue;const e=newEx({side:'both',...it,preset:key});p.lib.push(e);if(!p.auto)placeOne(p,e)}
   if(p.auto)buildWeek(p)}
 function removeEx(p,id){const e=exById(p,id);if(e&&e.videoId)assets&&assets.delete(e.videoId).catch(()=>{});p.lib=p.lib.filter(x=>x.id!==id);for(const d in p.week)p.week[d]=(p.week[d]||[]).filter(x=>x!==id)}
 function profForm(){
@@ -773,6 +788,7 @@ document.addEventListener('click',e=>{
     case'exedit':MD={kind:'ex',isNew:false,ex:clone(exById(p,id)),days:scheduleDaysOf(p,id),cancelUploads:[],removed:[]};openModal(exForm());break;
     case'vremove':readExForm();if(MD.ex.videoId)MD.removed.push(MD.ex.videoId);MD.ex.videoId='';MD.ex.videoUrl='';openModal(exForm());break;
     case'exsave':{readExForm();if(!MD.ex.name){$('f-name').focus();$('f-name').placeholder='Give it a name';break}
+      {const dup=p.lib.find(x=>x.id!==MD.ex.id&&normName(x.name)===normName(MD.ex.name));if(dup){MD.verr='You already have “'+dup.name+'”. Edit that one instead, or give this a different name.';openModal(exForm());break}}
       if(MD.isNew&&MD.ex.group==='other')MD.ex.group=guessGroup(MD.ex);
       const i=p.lib.findIndex(x=>x.id===MD.ex.id);if(i<0)p.lib.push(MD.ex);else p.lib[i]=MD.ex;
       const before=scheduleDaysOf(p,MD.ex.id).join();
